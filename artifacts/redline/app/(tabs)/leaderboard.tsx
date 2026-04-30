@@ -1808,27 +1808,6 @@ export default function LeaderboardScreen() {
                       </View>
                     )}
                   </View>
-                  {hasMap ? (
-                    <View style={styles.competitorMap} pointerEvents="none">
-                      <MapView
-                        style={styles.competitorMapView}
-                        initialRegion={getMapRegion(route)}
-                        scrollEnabled={false}
-                        zoomEnabled={false}
-                        rotateEnabled={false}
-                        pitchEnabled={false}
-                        liteMode
-                        toolbarEnabled={false}
-                        pointerEvents="none"
-                      >
-                        <Polyline coordinates={route} strokeColor="#CC0000" strokeWidth={3} />
-                      </MapView>
-                    </View>
-                  ) : (
-                    <View style={styles.competitorMapPlaceholder}>
-                      <Route size={18} color={colors.textLight} />
-                    </View>
-                  )}
                 </TouchableOpacity>
                 </AnimatedCard>
               );
