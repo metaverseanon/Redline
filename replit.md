@@ -47,12 +47,27 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 ## Notes
 
 - The Expo app imports the backend type-only (`import type { AppRouter }` in
-  `artifacts/redline/lib/trpc.ts`); the runtime backend lives in
-  `artifacts/api-server/src/backend`. Keep the two `backend/` trees in sync when
-  editing tRPC routes.
+  `artifacts/redline/lib/trpc.ts`). To eliminate drift,
+  `artifacts/redline/backend` is a **symlink** to `artifacts/api-server/src/backend`
+  — single source of truth for tRPC routes.
 - The platform proxy passes `/api/*` to the API server **without rewriting**, so all
-  Hono routes are mounted under their full path (e.g. `/api/trpc/*`, `/api/healthz`).
+  Hono routes are mounted under their full path (e.g. `/api/trpc/*`,
+  `/api/healthz`, `/api/cron/*`).
 - Web bundling fails for the Expo app because `react-native-maps` is native-only —
-  the app is intended for mobile (Expo Go), not the web preview iframe.
+  the app is intended for mobile (Expo Go), not the web preview iframe. The iOS
+  and Android bundles compile cleanly.
+
+### pnpm + Expo monorepo gotchas (already configured)
+
+- Root `.npmrc` sets `shamefully-hoist=true` because Metro doesn't traverse
+  pnpm's `.pnpm/` symlink structure when looking up transitive deps. This flat
+  layout is the standard Expo + pnpm fix and is harmless to other artifacts.
+- `artifacts/redline/metro.config.js` configures explicit `projectRoot`,
+  `watchFolders` (workspace root), `nodeModulesPaths`, and enables
+  `unstable_enableSymlinks`. Hierarchical resolution is left **enabled** so
+  Metro can find each package's scoped dep version (e.g. `semver` v6 hoisted at
+  root vs v7 nested under `react-native-reanimated`).
+- `@expo/metro-runtime` is added as an explicit dep of `redline` because it's a
+  required peer of `expo-router` that pnpm doesn't auto-install.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
