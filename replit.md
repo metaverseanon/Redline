@@ -3,25 +3,56 @@
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API server**
+(Hono + tRPC, talks to Supabase via REST).
+
+## Artifacts
+
+- `artifacts/redline` — Expo mobile app (Expo Go, port `18735`). Tabs: track / feed /
+  leaderboard / recap / settings. Migrated from the Rork platform — AppsFlyer,
+  `@rork-ai/toolkit-sdk`, and Rork-specific Metro plugins were removed.
+- `artifacts/api-server` — Hono + tRPC backend (port `8080`, served at `/api`).
+  Hosts the same `backend/` tree the Expo app references type-only. Uses Supabase REST
+  (no `@supabase/supabase-js` dep). Health probe: `GET /api/healthz`.
+  tRPC mounted at `/api/trpc/*`.
+- `artifacts/mockup-sandbox` — design canvas preview server.
 
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
 - **Node.js version**: 24
-- **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Mobile**: Expo SDK + React Native, `expo-router`, `react-native-maps@1.18.0`
+- **API framework**: Hono 4 + `@hono/node-server` + `@hono/trpc-server`
+- **RPC**: tRPC v11 with `superjson`
+- **Datastore**: Supabase (called via REST from the Hono backend)
+- **Validation**: Zod
+- **Build (api)**: esbuild → `dist/index.mjs`
 
-## Key Commands
+## Environment variables
+
+- `EXPO_PUBLIC_RORK_API_BASE_URL` — set in the redline `dev` script to
+  `https://$REPLIT_DEV_DOMAIN`; the Expo client appends `/api/trpc/...`.
+- `SESSION_SECRET` — generic session secret (provided by Replit).
+- Optional: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+  `CRON_SECRET`. Defaults are baked into `backend/trpc/db.ts`.
+
+## Key commands
 
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+- `pnpm --filter @workspace/api-server run dev` — build + run API server
+- `pnpm --filter @workspace/redline run dev` — start Expo dev server (QR for Expo Go)
+
+## Notes
+
+- The Expo app imports the backend type-only (`import type { AppRouter }` in
+  `artifacts/redline/lib/trpc.ts`); the runtime backend lives in
+  `artifacts/api-server/src/backend`. Keep the two `backend/` trees in sync when
+  editing tRPC routes.
+- The platform proxy passes `/api/*` to the API server **without rewriting**, so all
+  Hono routes are mounted under their full path (e.g. `/api/trpc/*`, `/api/healthz`).
+- Web bundling fails for the Expo app because `react-native-maps` is native-only —
+  the app is intended for mobile (Expo Go), not the web preview iframe.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
