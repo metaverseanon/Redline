@@ -39,3 +39,4 @@ externalPort = 3001
 
 [userenv.shared]
 EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_kQfCtyWpqIzEUCyNSEblHPaKhGL"
+EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = "appl_KpDluBkmasOJZTIqcVdWRUCHYJl"
