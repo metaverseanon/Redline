@@ -2,6 +2,7 @@ import * as z from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 
 import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl } from "../db";
+import { cachedOrFetch } from "../cache";
 
 function getResendApiKey() {
   return process.env.RESEND_API_KEY;
@@ -901,45 +902,88 @@ export const userRouter = createTRPCRouter({
       city: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      console.log("[NEARBY] Fetching nearby users for:", input.userId, "lat:", input.latitude, "lng:", input.longitude);
-      const users = await getAllUsers();
-      console.log("[NEARBY] Total users in DB:", users.length);
+      console.log("[NEARBY] Fetching nearby pingable users for:", input.userId, "lat:", input.latitude, "lng:", input.longitude);
+
+      if (!isDbConfigured()) {
+        console.log("[NEARBY] DB not configured");
+        return [];
+      }
+      if (input.latitude == null || input.longitude == null) {
+        console.log("[NEARBY] No caller coords supplied");
+        return [];
+      }
 
       const MAX_DISTANCE_KM = 100;
-      const hasCoords = input.latitude != null && input.longitude != null;
+      const latKey = Math.round(input.latitude * 20) / 20;
+      const lngKey = Math.round(input.longitude * 20) / 20;
+      const cacheKey = `nearby-pingable:${latKey}:${lngKey}`;
 
-      const nearbyUsers = users
-        .filter(u => u.id !== input.userId)
-        .map(u => {
-          let distanceKm: number | null = null;
+      type NearbyUser = {
+        id: string;
+        displayName: string;
+        country: string | null;
+        city: string | null;
+        carBrand: string | null;
+        carModel: string | null;
+        hasPushToken: boolean;
+        distanceKm: number | null;
+      };
 
-          if (hasCoords && u.latitude != null && u.longitude != null) {
-            distanceKm = haversineDistance(
-              input.latitude!,
-              input.longitude!,
-              u.latitude,
-              u.longitude
-            );
-          }
+      const all = await cachedOrFetch<NearbyUser[]>(cacheKey, 60_000, async () => {
+        const url = `${getSupabaseRestUrl("users")}?select=id,display_name,country,city,car_brand,car_model,latitude,longitude&push_token=not.is.null&latitude=not.is.null&longitude=not.is.null&location_updated_at=not.is.null&order=location_updated_at.desc.nullslast&limit=1000`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        let resp: Response;
+        try {
+          resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders(), signal: controller.signal });
+        } catch (e) {
+          const isAbort = e instanceof Error && e.name === 'AbortError';
+          console.error("[NEARBY] fetch failed:", isAbort ? 'timed out after 20s' : e);
+          throw e;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        if (!resp.ok) {
+          const text = await resp.text();
+          console.error("[NEARBY] Supabase error:", resp.status, text);
+          throw new Error(`Supabase ${resp.status}`);
+        }
+        const rows = (await resp.json()) as { id: string; display_name: string; country: string | null; city: string | null; car_brand: string | null; car_model: string | null; latitude: number; longitude: number }[];
+        console.log("[NEARBY] Pingable user pool size:", rows.length);
+        return rows.map(r => ({
+          id: r.id,
+          displayName: r.display_name,
+          country: r.country,
+          city: r.city,
+          carBrand: r.car_brand,
+          carModel: r.car_model,
+          hasPushToken: true,
+          distanceKm: null,
+          _lat: r.latitude,
+          _lng: r.longitude,
+        }) as NearbyUser & { _lat: number; _lng: number });
+      });
 
-          return { user: u, distanceKm };
-        })
-        .filter(({ distanceKm }) => {
-          if (distanceKm === null) return false;
-          return distanceKm <= MAX_DISTANCE_KM;
-        })
-        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      const nearbyUsers = (all as (NearbyUser & { _lat?: number; _lng?: number })[])
+        .filter(u => u.id !== input.userId && u._lat != null && u._lng != null)
+        .map(u => ({
+          ...u,
+          distanceKm: haversineDistance(input.latitude!, input.longitude!, u._lat!, u._lng!),
+        }))
+        .filter(u => u.distanceKm <= MAX_DISTANCE_KM)
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 50);
 
-      console.log("[NEARBY] Found", nearbyUsers.length, "nearby users within", MAX_DISTANCE_KM, "km");
-      return nearbyUsers.map(({ user: u, distanceKm }) => ({
+      console.log("[NEARBY] Returning", nearbyUsers.length, "pingable users within", MAX_DISTANCE_KM, "km");
+      return nearbyUsers.map(u => ({
         id: u.id,
         displayName: u.displayName,
         country: u.country,
         city: u.city,
         carBrand: u.carBrand,
         carModel: u.carModel,
-        hasPushToken: !!u.pushToken,
-        distanceKm: distanceKm != null ? Math.round(distanceKm) : null,
+        hasPushToken: true,
+        distanceKm: Math.round(u.distanceKm),
       }));
     }),
 

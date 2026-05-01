@@ -217,6 +217,12 @@ export default function LeaderboardScreen() {
     },
     {
       enabled: !!user?.id && userCoords != null,
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      retry: 3,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     }
   );
 
