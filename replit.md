@@ -90,6 +90,20 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
     "Top Speed" / "Distance" sort options are the Pro perk and route through the
     paywall when tapped by free users.
 
+### Feed reliability (Drives / Posts / Discover tabs)
+
+- Backend: all four feed routes (`social.getFeed`, `social.getDiscoverDrives`,
+  `posts.getFeedPosts`, `posts.getDiscoverPosts`) now have multi-tier fallbacks
+  so the user always sees content when data exists in Supabase. Discover
+  fallbacks: (1) recent non-followed users, (2) all-time non-followed,
+  (3) include followed users. Catch blocks now `throw` instead of returning
+  `[]` so client distinguishes errors from genuinely empty data.
+- Frontend (`artifacts/redline/app/(tabs)/feed.tsx`): each tab shows a distinct
+  error state with a "Retry" button when the tRPC query fails, instead of the
+  misleading "Follow other drivers" empty state. Error state appears only on
+  `query.isError`; the original empty state still appears when the API
+  successfully returns `[]`.
+
 ### pnpm + Expo monorepo gotchas (already configured)
 
 - Root `.npmrc` sets `shamefully-hoist=true` because Metro doesn't traverse

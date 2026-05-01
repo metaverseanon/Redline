@@ -411,6 +411,10 @@ export const socialRouter = createTRPCRouter({
           if (globalResp.ok) {
             feedRows = await globalResp.json();
             console.log("[SOCIAL] Feed fallback global rows fetched:", feedRows.length);
+          } else {
+            const err = await globalResp.text();
+            console.error("[SOCIAL] Feed global fallback failed:", err);
+            throw new Error(`Feed global fallback failed: ${err}`);
           }
         }
 
@@ -471,7 +475,7 @@ export const socialRouter = createTRPCRouter({
         }));
       } catch (error) {
         console.error("[SOCIAL] Feed error:", error);
-        return [];
+        throw error;
       }
     }),
 
@@ -799,10 +803,30 @@ export const socialRouter = createTRPCRouter({
         const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
         const feedUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=200&created_at=gte.${thirtyDaysAgo}`;
         const feedResp = await fetch(feedUrl, { method: "GET", headers: getSupabaseHeaders() });
-        if (!feedResp.ok) return [];
+        if (!feedResp.ok) {
+          const err = await feedResp.text();
+          console.error("[SOCIAL] Discover drives recent fetch failed:", err);
+          throw new Error(`Discover drives recent fetch failed: ${err}`);
+        }
 
-        const allRows: ActivityFeedRow[] = await feedResp.json();
-        const discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
+        let allRows: ActivityFeedRow[] = await feedResp.json();
+        let discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
+        console.log("[SOCIAL] Discover drives candidates (recent, non-followed):", discoverRows.length);
+
+        if (discoverRows.length === 0) {
+          const allTimeUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=300`;
+          const allTimeResp = await fetch(allTimeUrl, { method: "GET", headers: getSupabaseHeaders() });
+          if (allTimeResp.ok) {
+            allRows = await allTimeResp.json();
+            discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
+            console.log("[SOCIAL] Discover drives candidates (all-time fallback, non-followed):", discoverRows.length);
+          }
+        }
+
+        if (discoverRows.length === 0 && allRows.length > 0) {
+          discoverRows = allRows.filter(r => (r.top_speed ?? 0) > 0);
+          console.log("[SOCIAL] Discover drives final fallback (include followed):", discoverRows.length);
+        }
 
         const userCounts = new Map<string, number>();
         const uniqueRows: ActivityFeedRow[] = [];
@@ -820,7 +844,10 @@ export const socialRouter = createTRPCRouter({
         }
         const selected = uniqueRows.slice(0, input.limit);
 
-        if (selected.length === 0) return [];
+        if (selected.length === 0) {
+          console.log("[SOCIAL] Discover drives empty after all fallbacks");
+          return [];
+        }
 
         const discoverUserIds = [...new Set(selected.map(r => r.user_id))];
         const idsParam = discoverUserIds.map(id => `"${id}"`).join(',');
@@ -879,7 +906,7 @@ export const socialRouter = createTRPCRouter({
         }));
       } catch (error) {
         console.error("[SOCIAL] Discover drives error:", error);
-        return [];
+        throw error;
       }
     }),
 

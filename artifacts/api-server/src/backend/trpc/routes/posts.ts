@@ -257,6 +257,10 @@ export const postsRouter = createTRPCRouter({
           if (globalResp.ok) {
             postRows = await globalResp.json();
             console.log("[POSTS] Feed posts fallback global fetched:", postRows.length);
+          } else {
+            const err = await globalResp.text();
+            console.error("[POSTS] Feed posts global fallback failed:", err);
+            throw new Error(`Posts feed global fallback failed: ${err}`);
           }
         }
 
@@ -313,7 +317,7 @@ export const postsRouter = createTRPCRouter({
         }));
       } catch (error) {
         console.error("[POSTS] Feed posts error:", error);
-        return [];
+        throw error;
       }
     }),
 
@@ -594,10 +598,30 @@ export const postsRouter = createTRPCRouter({
         const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
         const postsUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=200&created_at=gte.${thirtyDaysAgo}`;
         const postsResp = await fetch(postsUrl, { method: "GET", headers: getSupabaseHeaders() });
-        if (!postsResp.ok) return [];
+        if (!postsResp.ok) {
+          const err = await postsResp.text();
+          console.error("[POSTS] Discover posts recent fetch failed:", err);
+          throw new Error(`Discover posts recent fetch failed: ${err}`);
+        }
 
-        const allPosts: PostRow[] = await postsResp.json();
-        const discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
+        let allPosts: PostRow[] = await postsResp.json();
+        let discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
+        console.log("[POSTS] Discover posts candidates (recent, non-followed):", discoverPosts.length);
+
+        if (discoverPosts.length === 0) {
+          const allTimeUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=300`;
+          const allTimeResp = await fetch(allTimeUrl, { method: "GET", headers: getSupabaseHeaders() });
+          if (allTimeResp.ok) {
+            allPosts = await allTimeResp.json();
+            discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
+            console.log("[POSTS] Discover posts candidates (all-time fallback, non-followed):", discoverPosts.length);
+          }
+        }
+
+        if (discoverPosts.length === 0 && allPosts.length > 0) {
+          discoverPosts = allPosts;
+          console.log("[POSTS] Discover posts final fallback (include followed):", discoverPosts.length);
+        }
 
         const userCounts = new Map<string, number>();
         const uniquePosts: PostRow[] = [];
@@ -615,7 +639,10 @@ export const postsRouter = createTRPCRouter({
         }
         const selected = uniquePosts.slice(0, input.limit);
 
-        if (selected.length === 0) return [];
+        if (selected.length === 0) {
+          console.log("[POSTS] Discover posts empty after all fallbacks");
+          return [];
+        }
 
         const userIds = [...new Set(selected.map((p) => p.user_id))];
         const idsParam = userIds.map((id) => `"${id}"`).join(",");
@@ -668,7 +695,7 @@ export const postsRouter = createTRPCRouter({
         }));
       } catch (error) {
         console.error("[POSTS] Discover posts error:", error);
-        return [];
+        throw error;
       }
     }),
 

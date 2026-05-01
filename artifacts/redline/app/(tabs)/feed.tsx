@@ -13,7 +13,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Navigation, Clock, MapPin, Search, X, UserPlus, Car, Zap, Users, Plus, Bell, Gauge, Compass, MessageCircle } from 'lucide-react-native';
+import { Navigation, Clock, MapPin, Search, X, UserPlus, Car, Zap, Users, Plus, Bell, Gauge, Compass, MessageCircle, AlertCircle, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -661,6 +661,24 @@ export default function FeedScreen() {
     </View>
   ), [styles, colors]);
 
+  const renderErrorState = useCallback((onRetry: () => void) => (
+    <View style={styles.emptyContainer}>
+      <AlertCircle size={48} color={colors.danger ?? '#ef4444'} />
+      <Text style={styles.emptyTitle}>Couldn&apos;t load feed</Text>
+      <Text style={styles.emptySubtext}>
+        Check your connection and try again
+      </Text>
+      <TouchableOpacity
+        style={styles.emptySearchButton}
+        onPress={onRetry}
+        activeOpacity={0.7}
+      >
+        <RefreshCw size={16} color="#fff" />
+        <Text style={styles.emptySearchButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  ), [styles, colors]);
+
   const unreadCount = unreadCountQuery.data?.count ?? 0;
   const discoverLoading = discoverDrivesQuery.isLoading || discoverPostsQuery.isLoading;
   const discoverRefetching = discoverDrivesQuery.isRefetching || discoverPostsQuery.isRefetching;
@@ -800,7 +818,7 @@ export default function FeedScreen() {
                 tintColor={colors.accent}
               />
             }
-            ListEmptyComponent={emptyDrives}
+            ListEmptyComponent={feedQuery.isError ? renderErrorState(() => void feedQuery.refetch()) : emptyDrives}
           />
         )
       ) : activeTab === 'posts' ? (
@@ -825,7 +843,7 @@ export default function FeedScreen() {
                 tintColor={colors.accent}
               />
             }
-            ListEmptyComponent={emptyPosts}
+            ListEmptyComponent={postsQuery.isError ? renderErrorState(() => void postsQuery.refetch()) : emptyPosts}
           />
         )
       ) : (
@@ -850,7 +868,12 @@ export default function FeedScreen() {
                 tintColor={colors.accent}
               />
             }
-            ListEmptyComponent={emptyDiscover}
+            ListEmptyComponent={(discoverDrivesQuery.isError || discoverPostsQuery.isError)
+              ? renderErrorState(() => {
+                  void discoverDrivesQuery.refetch();
+                  void discoverPostsQuery.refetch();
+                })
+              : emptyDiscover}
           />
         )
       )}
