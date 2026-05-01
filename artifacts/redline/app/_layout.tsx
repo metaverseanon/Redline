@@ -15,6 +15,7 @@ import { UserProvider, useUser } from "@/providers/UserProvider";
 import { NotificationProvider, useNotifications } from "@/providers/NotificationProvider";
 import StreakPopup from "@/components/StreakPopup";
 import { trpc, trpcClient } from "@/lib/trpc";
+import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -27,6 +28,12 @@ import {
 } from "@expo-google-fonts/orbitron";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+try {
+  initializeRevenueCat();
+} catch (err: any) {
+  console.warn('[RC] Initialization failed:', err?.message ?? err);
+}
 
 if (Platform.OS !== 'web') {
   try {
@@ -232,6 +239,11 @@ function AnalyticsSync() {
   return null;
 }
 
+function RevenueCatUserSync({ children }: { children: ReactNode }) {
+  const { user } = useUser();
+  return <SubscriptionProvider userId={user?.id ?? null}>{children}</SubscriptionProvider>;
+}
+
 function PushTokenSync() {
   const { user } = useUser();
   const { pushToken, notificationsEnabled, syncPushTokenToBackend } = useNotifications();
@@ -421,6 +433,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <SettingsProvider>
             <UserProvider>
+              <RevenueCatUserSync>
               <AnalyticsProvider>
               <NotificationProvider>
                 <AnalyticsSync />
@@ -441,6 +454,7 @@ export default function RootLayout() {
                 </AchievementProvider>
               </NotificationProvider>
               </AnalyticsProvider>
+              </RevenueCatUserSync>
             </UserProvider>
           </SettingsProvider>
         </QueryClientProvider>

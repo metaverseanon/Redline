@@ -26,6 +26,7 @@ import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { trpcClient } from '@/lib/trpc';
 import { COUNTRIES, getCitiesForCountry } from '@/constants/countries';
 import { UserCar } from '@/types/user';
+import SubscriptionSection from '@/components/SubscriptionSection';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -1286,6 +1287,8 @@ export default function ProfileScreen() {
           {isSubmitting || isCheckingDisplayName ? 'Saving...' : 'Save Changes'}
         </Text>
       </TouchableOpacity>
+
+      <SubscriptionSection />
 
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <LogOut color={colors.accent} size={18} />

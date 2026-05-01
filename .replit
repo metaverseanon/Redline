@@ -34,3 +34,8 @@ externalPort = 3000
 [[ports]]
 localPort = 18736
 externalPort = 3001
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_kQfCtyWpqIzEUCyNSEblHPaKhGL"

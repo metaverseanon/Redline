@@ -37,6 +37,9 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - Optional: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
   `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
   `CRON_SECRET`. Defaults are baked into `backend/trpc/db.ts`.
+- `EXPO_PUBLIC_REVENUECAT_TEST_API_KEY` — RevenueCat public **test** key, used in
+  Expo Go / dev builds (preview API mode mocks purchases). For production builds
+  set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` / `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY`.
 
 ## Key commands
 
@@ -56,6 +59,16 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - Web bundling fails for the Expo app because `react-native-maps` is native-only —
   the app is intended for mobile (Expo Go), not the web preview iframe. The iOS
   and Android bundles compile cleanly.
+- **Subscriptions (RevenueCat):** integrated via `react-native-purchases` and
+  `react-native-purchases-ui`. The SDK is initialized at app boot (`_layout.tsx`)
+  and identified to the backend user inside `UserProvider` via `SubscriptionProvider`.
+  Entitlement checked: `RedLine App Pro`; packages: `monthly`, `yearly` from the
+  current default offering. `lib/revenuecat.tsx` exposes `useSubscription()`,
+  `presentPaywall()`, and `presentCustomerCenter()` (uses RevenueCat's prebuilt
+  Paywall + Customer Center UI). `components/SubscriptionSection.tsx` renders the
+  status / upgrade / manage / restore controls and is mounted on the profile screen.
+  Native modules are lazily required and the whole feature short-circuits to a
+  clean "unavailable" state on web.
 
 ### pnpm + Expo monorepo gotchas (already configured)
 
