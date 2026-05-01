@@ -1,0 +1,59 @@
+~/workspace$ cd artifacts/redline
+~/.../artifacts/redline$ npx --yes eas-cli@latest login
+Log in to EAS with email or username (exit and run eas login --help to see other login options)
+✔ Email or username … tonix_o
+✔ Password … **********
+Logged in
+~/.../artifacts/redline$ npx --yes eas-cli@latest whoami
+npx --yes eas-cli@latest project:info
+tonix_o
+tgranic95@gmail.com
+
+fullName  @tonix_o/redline
+ID        1218d6d0-39a9-4c1e-b8bf-44fe738b1ea9
+~/.../artifacts/redline$ npx --yes eas-cli@latest build --platform ios --profile production
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+Environment variables with visibility "Plain text" and "Sensitive" loaded from the "production" environment on EAS: CRON_SECRET, EXPO_PUBLIC_HERE_API_KEY, EXPO_PUBLIC_PROJECT_ID, EXPO_PUBLIC_RORK_API_BASE_URL, EXPO_PUBLIC_RORK_AUTH_URL, EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY, EXPO_PUBLIC_TEAM_ID, EXPO_PUBLIC_TOOLKIT_URL, EXPO_TOKEN, RESEND_API_KEY, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL.
+Environment variables loaded from the "production" build profile "env" configuration: EXPO_PUBLIC_RORK_API_BASE_URL.
+The following environment variables are defined in both the "production" build profile "env" configuration and the "production" environment on EAS: EXPO_PUBLIC_RORK_API_BASE_URL. The values from the build profile configuration will be used.
+
+✔ iOS app only uses standard/exempt encryption? Learn more: https://developer.apple.com/documentation/Security/complying-with-encryption-export-regulations … yes
+
+You've used 97% of your included build credits for this month. █████████████████████████████░
+Additional usage beyond your limit will be charged at pay-as-you-go rates. See usage in billing.: https://expo.dev/accounts/tonix_o/settings/billing
+
+The build profile "production" specifies the channel "production", but the "expo-updates" package is missing. To use channels in your builds, install the "expo-updates" package and run "eas update:configure".
+✔ Would you like to install the "expo-updates" package and configure EAS Update now? … yes
+> npx expo install expo-updates
+[expo-cli] › Installing 1 SDK 54.0.0 compatible native module using pnpm
+[expo-cli] > pnpm add expo-updates@~29.0.17
+[expo-cli] ../..                                    | Progress: resolved 1, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 56, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 132, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 304, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 545, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 801, reused 0, downloaded 0, added 0
+[expo-cli] ../..                                    | Progress: resolved 1063, reused 0, downloaded 0, added 0
+[expo-cli] WARN  5 deprecated subdependencies found: glob@7.2.3, inflight@1.0.6, rimraf@3.0.2, uuid@3.4.0, uuid@7.0.3
+[expo-cli] ../..                                    | Progress: resolved 1065, reused 0, downloaded 0, added 0, done
+[expo-cli] dependencies:
+[expo-cli] + expo-updates ~29.0.17
+[expo-cli] ../..                                    |   +7 +
+[expo-cli] ../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[expo-cli] ../.. preinstall: Done
+[expo-cli] Done in 9.7s using pnpm v10.26.1
+✔ Installed expo-updates
+✔ Configured updates.url to "https://u.expo.dev/1218d6d0-39a9-4c1e-b8bf-44fe738b1ea9"
+✔ Configured runtimeVersion for Android and iOS with "{"policy":"appVersion"}"
+
+All builds of your app going forward will be eligible to receive updates published with EAS Update.
+
+✔ Installed expo-updates and configured EAS Update.
+Command must be re-run to pick up new updates configuration.
+    Error: build command failed.
+~/.../artifacts/redline$ 
