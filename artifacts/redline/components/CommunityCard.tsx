@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, ScrollView } from 'react-native';
-import { Users, Trophy, Activity, Crown, ChevronDown } from 'lucide-react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Users, Trophy, Activity, Crown, ChevronDown, ChevronRight } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import { useSettings } from '@/providers/SettingsProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -14,18 +14,22 @@ const SORT_OPTIONS: { key: Sort; label: string; pro: boolean }[] = [
   { key: 'distance', label: 'Distance', pro: true },
 ];
 
+type PaywallResult = 'purchased' | 'restored' | 'cancelled' | 'error' | 'not_presented';
+
 interface CommunityCardProps {
   userId: string;
   isSubscribed: boolean;
-  presentPaywall: () => void;
+  presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
+  defaultExpanded?: boolean;
 }
 
-export default function CommunityCard({ userId, isSubscribed, presentPaywall }: CommunityCardProps) {
+export default function CommunityCard({ userId, isSubscribed, presentPaywall, defaultExpanded = false }: CommunityCardProps) {
   const { colors, convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel } = useSettings();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [sort, setSort] = useState<Sort>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
 
   const communityQuery = trpc.communities.getMyCommunity.useQuery(
     { userId },
@@ -46,9 +50,26 @@ export default function CommunityCard({ userId, isSubscribed, presentPaywall }: 
     { enabled: !!brand && !!model }
   );
 
+  const tryPaywall = useCallback(async () => {
+    try {
+      const result = (await presentPaywall()) as PaywallResult | void;
+      if (result === 'not_presented' || result === 'error') {
+        Alert.alert(
+          'Pro feature',
+          'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
+        );
+      }
+    } catch {
+      Alert.alert(
+        'Pro feature',
+        'The upgrade screen could not be opened right now. Please try again.',
+      );
+    }
+  }, [presentPaywall]);
+
   const handleSortPress = (option: Sort, isPro: boolean) => {
     if (isPro && !isSubscribed) {
-      presentPaywall();
+      void tryPaywall();
       return;
     }
     setSort(option);
@@ -83,13 +104,33 @@ export default function CommunityCard({ userId, isSubscribed, presentPaywall }: 
 
   return (
     <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <Users size={18} color={colors.accent} />
-        <Text style={styles.title}>
-          {community.brand} {community.model} Community
-        </Text>
-      </View>
+      <TouchableOpacity
+        style={styles.headerRow}
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <View style={styles.headerIconBubble}>
+          <Users size={14} color={colors.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            {community.brand} {community.model}
+          </Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {community.memberCount} {community.memberCount === 1 ? 'driver' : 'drivers'} · {community.stats.totalTrips} trips
+          </Text>
+        </View>
+        {expanded ? (
+          <ChevronDown size={18} color={colors.textLight} />
+        ) : (
+          <ChevronRight size={18} color={colors.textLight} />
+        )}
+      </TouchableOpacity>
 
+      {!expanded && null}
+      {expanded && (
+      <>
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statValue}>{community.memberCount}</Text>
@@ -184,6 +225,8 @@ export default function CommunityCard({ userId, isSubscribed, presentPaywall }: 
           ))}
         </ScrollView>
       </View>
+      </>
+      )}
     </View>
   );
 }
@@ -202,19 +245,35 @@ const createStyles = (colors: ThemeColors) =>
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      marginBottom: 12,
+      gap: 10,
+    },
+    headerIconBubble: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     title: {
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: 'Orbitron_700Bold',
       color: colors.text,
       letterSpacing: 0.5,
-      flex: 1,
+    },
+    subtitle: {
+      fontSize: 10,
+      fontFamily: 'Orbitron_400Regular',
+      color: colors.textLight,
+      marginTop: 2,
+      letterSpacing: 0.3,
     },
     statsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      marginTop: 14,
       marginBottom: 16,
       gap: 8,
     },

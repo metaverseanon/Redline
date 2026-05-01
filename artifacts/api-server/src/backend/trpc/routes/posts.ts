@@ -248,21 +248,8 @@ export const postsRouter = createTRPCRouter({
         const postsResp = await fetch(postsUrl, { method: "GET", headers: getSupabaseHeaders() });
         if (!postsResp.ok) return [];
 
-        let postRows: PostRow[] = await postsResp.json();
-        console.log("[POSTS] Feed posts fetched (following):", postRows.length);
-
-        if (postRows.length === 0) {
-          const globalUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=${input.limit}&offset=${input.offset}`;
-          const globalResp = await fetch(globalUrl, { method: "GET", headers: getSupabaseHeaders() });
-          if (globalResp.ok) {
-            postRows = await globalResp.json();
-            console.log("[POSTS] Feed posts fallback global fetched:", postRows.length);
-          } else {
-            const err = await globalResp.text();
-            console.error("[POSTS] Feed posts global fallback failed:", err);
-            throw new Error(`Posts feed global fallback failed: ${err}`);
-          }
-        }
+        const postRows: PostRow[] = await postsResp.json();
+        console.log("[POSTS] Feed posts fetched (following only):", postRows.length);
 
         const postUserIds = [...new Set(postRows.map(r => r.user_id))];
         const userMap = new Map<string, { displayName: string; carBrand?: string; carModel?: string; profilePicture?: string }>();

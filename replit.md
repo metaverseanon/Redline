@@ -83,25 +83,38 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
     `delete`. Requires Supabase tables `private_leaderboards`
     (id, name, owner_id, category, created_at) and
     `private_leaderboard_members` (id, leaderboard_id, user_id, joined_at).
-    UI: `components/FriendsBoardsModal.tsx` mounted on the leaderboard tab via a
-    "FRIENDS" header button (locked card + paywall CTA for non-Pro).
+    UI: `components/FriendsBoardsModal.tsx` is **always-mounted** on the
+    leaderboard tab (visibility-controlled, not conditionally rendered) and
+    opened via two entry points: (a) the small "FRIENDS" header button, and
+    (b) a prominent `privateBoardsCta` row above the leaderboard filters
+    showing Trophy icon + "Private Boards" + Pro badge + "Create a board,
+    invite friends, compete privately" subtitle. All paywall calls in the modal
+    go through a `tryPaywall` wrapper that surfaces an `Alert.alert` if
+    `presentPaywall` returns `not_presented`/`error` (so the upgrade button
+    never silently does nothing).
   - **Model-based auto-communities** — derived from `users.car_brand` +
     `users.car_model`; no new tables. Backend router `communities`
     (`getMyCommunity`, `getCommunityFeed`) in
     `artifacts/api-server/src/backend/trpc/routes/communities.ts`. UI:
-    `components/CommunityCard.tsx` rendered near the top of the leaderboard tab.
-    Free users see the community read-only with the default "Recent" sort; the
-    "Top Speed" / "Distance" sort options are the Pro perk and route through the
-    paywall when tapped by free users.
+    `components/CommunityCard.tsx` is **collapsed by default** (compact 1-line
+    header: icon-bubble + brand/model + "N drivers · M trips" + chevron) and
+    expands inline on tap to show full stats / top members / activity feed.
+    Positioned **below** the meetup pings/location banner (not above) so it
+    doesn't dominate the leaderboard entry view. Free users see the community
+    read-only with the default "Recent" sort; "Top Speed"/"Distance" sort
+    options are Pro and route through `tryPaywall` (with Alert fallback) when
+    tapped by free users.
 
 ### Feed reliability (Drives / Posts / Discover tabs)
 
-- Backend: all four feed routes (`social.getFeed`, `social.getDiscoverDrives`,
-  `posts.getFeedPosts`, `posts.getDiscoverPosts`) now have multi-tier fallbacks
-  so the user always sees content when data exists in Supabase. Discover
-  fallbacks: (1) recent non-followed users, (2) all-time non-followed,
-  (3) include followed users. Catch blocks now `throw` instead of returning
-  `[]` so client distinguishes errors from genuinely empty data.
+- Backend: `posts.getFeedPosts` (the **Posts** tab) shows **strictly** posts
+  from followed users + self — the previous "global fallback when followed
+  returns empty" was removed. The Discover tab is the dedicated surface for
+  posts/drives from non-followed users. Other feed routes (`social.getFeed`,
+  `social.getDiscoverDrives`, `posts.getDiscoverPosts`) keep multi-tier
+  fallbacks (recent non-followed → all-time non-followed → include followed).
+  Catch blocks `throw` instead of returning `[]` so client distinguishes
+  errors from genuinely empty data.
 - Frontend (`artifacts/redline/app/(tabs)/feed.tsx`): each tab shows a distinct
   error state with a "Retry" button when the tRPC query fails, instead of the
   misleading "Follow other drivers" empty state. Error state appears only on

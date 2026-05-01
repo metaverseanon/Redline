@@ -1409,14 +1409,6 @@ export default function LeaderboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {user?.id && (
-        <CommunityCard
-          userId={user.id}
-          isSubscribed={isSubscribed}
-          presentPaywall={presentPaywall}
-        />
-      )}
-
       {pendingIncomingPings.length > 0 && (
         <View style={styles.incomingPingBanner}>
           <View style={styles.incomingPingBannerContent}>
@@ -1513,6 +1505,44 @@ export default function LeaderboardScreen() {
             )}
           </View>
         </View>
+      )}
+
+      {user?.id && (
+        <TouchableOpacity
+          style={styles.privateBoardsCta}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            setShowFriendsBoards(true);
+          }}
+          activeOpacity={0.85}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <View style={styles.privateBoardsCtaIcon}>
+            <Trophy size={18} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.privateBoardsCtaTitleRow}>
+              <Text style={styles.privateBoardsCtaTitle}>Private Boards</Text>
+              {!isSubscribed && <ProBadge size="sm" />}
+            </View>
+            <Text style={styles.privateBoardsCtaSubtitle} numberOfLines={1}>
+              {isSubscribed
+                ? 'Create a board, invite friends, compete privately'
+                : 'Create private leaderboards with friends'}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.textLight} />
+        </TouchableOpacity>
+      )}
+
+      {user?.id && (
+        <CommunityCard
+          userId={user.id}
+          isSubscribed={isSubscribed}
+          presentPaywall={presentPaywall}
+        />
       )}
 
       <View style={styles.filtersContainer}>
@@ -3388,6 +3418,48 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
     gap: 8,
+  },
+  privateBoardsCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.cardBackground,
+  },
+  privateBoardsCtaIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  privateBoardsCtaTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  privateBoardsCtaTitle: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    letterSpacing: 0.5,
+  },
+  privateBoardsCtaSubtitle: {
+    fontSize: 10,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
   sectionLabel: {
     fontSize: 11,

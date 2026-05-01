@@ -636,20 +636,28 @@ export default function FeedScreen() {
   const emptyPosts = useMemo(() => (
     <View style={styles.emptyContainer}>
       <Users size={48} color={colors.textLight} />
-      <Text style={styles.emptyTitle}>No posts yet</Text>
+      <Text style={styles.emptyTitle}>No posts from people you follow</Text>
       <Text style={styles.emptySubtext}>
-        Follow other drivers or create a post
+        Follow drivers to see their posts here, or browse Discover to find new people.
       </Text>
       <TouchableOpacity
         style={styles.emptySearchButton}
+        onPress={() => switchTab('discover')}
+        activeOpacity={0.7}
+      >
+        <Compass size={16} color="#fff" />
+        <Text style={styles.emptySearchButtonText}>Browse Discover</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.emptySearchButton, { marginTop: 8, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
         onPress={() => requireAuth('create posts and share with the community', () => router.push('/create-post' as any))}
         activeOpacity={0.7}
       >
-        <Plus size={16} color="#fff" />
-        <Text style={styles.emptySearchButtonText}>Create Post</Text>
+        <Plus size={16} color={colors.text} />
+        <Text style={[styles.emptySearchButtonText, { color: colors.text }]}>Create Post</Text>
       </TouchableOpacity>
     </View>
-  ), [styles, colors, requireAuth, router]);
+  ), [styles, colors, requireAuth, router, switchTab]);
 
   const emptyDiscover = useMemo(() => (
     <View style={styles.emptyContainer}>

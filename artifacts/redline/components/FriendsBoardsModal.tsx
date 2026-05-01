@@ -28,12 +28,14 @@ const CATEGORY_OPTIONS: { key: Category; label: string }[] = [
   { key: 'maxGForce', label: 'Max G' },
 ];
 
+type PaywallResult = 'purchased' | 'restored' | 'cancelled' | 'error' | 'not_presented';
+
 interface FriendsBoardsModalProps {
   visible: boolean;
   onClose: () => void;
   userId: string;
   isSubscribed: boolean;
-  presentPaywall: () => void;
+  presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
 }
 
 type ViewMode = 'list' | 'create' | 'details';
@@ -112,13 +114,32 @@ export default function FriendsBoardsModal({
     onError: (e) => Alert.alert('Delete failed', e.message),
   });
 
+  const tryPaywall = useCallback(async () => {
+    try {
+      const result = (await presentPaywall()) as PaywallResult | void;
+      if (result === 'not_presented' || result === 'error') {
+        Alert.alert(
+          'Friends Boards (Pro)',
+          'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
+        );
+      }
+      return result;
+    } catch (e) {
+      Alert.alert(
+        'Friends Boards (Pro)',
+        'The upgrade screen could not be opened right now. Please try again.',
+      );
+      return 'error' as const;
+    }
+  }, [presentPaywall]);
+
   const handleCreatePress = useCallback(() => {
     if (!isSubscribed) {
-      presentPaywall();
+      void tryPaywall();
       return;
     }
     setView('create');
-  }, [isSubscribed, presentPaywall]);
+  }, [isSubscribed, tryPaywall]);
 
   const handleSubmitCreate = useCallback(() => {
     const name = createName.trim();
@@ -199,7 +220,7 @@ export default function FriendsBoardsModal({
                   <Text style={styles.lockedDesc}>
                     Create private leaderboards for your friends. They don&apos;t need Pro to join.
                   </Text>
-                  <TouchableOpacity style={styles.upgradeBtn} onPress={presentPaywall} activeOpacity={0.8}>
+                  <TouchableOpacity style={styles.upgradeBtn} onPress={() => { void tryPaywall(); }} activeOpacity={0.8}>
                     <Crown size={14} color="#000" />
                     <Text style={styles.upgradeBtnText}>UPGRADE TO PRO</Text>
                   </TouchableOpacity>
