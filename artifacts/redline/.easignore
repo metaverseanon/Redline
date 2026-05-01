@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+.env*
+!.env.production
+ios/
+android/
+*.log
+.DS_Store
+.git/
+__tests__/
+coverage/
+.vscode/
+.idea/
