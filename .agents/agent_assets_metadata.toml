@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "IDwDtvA7_useNNrxosMqG"
+uri = "file://attached_assets/redline_paywall_mockup.png"
+type = "image"
+title = "redline paywall mockup"
+
+[[outputs]]
+id = "JDbMZA0zMxXxDO6Dx5--P"
+uri = "file://attached_assets/redline_paywall_mockup.png"
+type = "image"
+title = "RedLine Pro paywall mockup (placeholder for App Store Connect)"
