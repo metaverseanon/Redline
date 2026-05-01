@@ -23,6 +23,9 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_RORK_API_BASE_URL": "https://trip-stats-tracker.replit.app"
+      },
       "ios": {
         "resourceClass": "m-medium"
       }
