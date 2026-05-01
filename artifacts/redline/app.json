@@ -2,6 +2,7 @@
   "expo": {
     "name": "RedLine",
     "slug": "redline",
+    "owner": "tonix_o",
     "version": "1.5.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -101,6 +102,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1218d6d0-39a9-4c1e-b8bf-44fe738b1ea9"
+      }
     }
   }
 }
