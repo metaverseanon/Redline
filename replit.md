@@ -69,6 +69,26 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   status / upgrade / manage / restore controls and is mounted on the profile screen.
   Native modules are lazily required and the whole feature short-circuits to a
   clean "unavailable" state on web.
+- **Pro social features (additive, never gate the free path):**
+  - **Friends-only private leaderboards** — Pro users create boards and invite by
+    username; free users can join if invited. Backend router
+    `privateLeaderboards` (`create`, `listMine`, `getDetails`,
+    `inviteByUsername`, `leave`, `delete`) in
+    `artifacts/api-server/src/backend/trpc/routes/private-leaderboards.ts`. Server
+    enforces membership on `getDetails` and owner-only on `inviteByUsername`/
+    `delete`. Requires Supabase tables `private_leaderboards`
+    (id, name, owner_id, category, created_at) and
+    `private_leaderboard_members` (id, leaderboard_id, user_id, joined_at).
+    UI: `components/FriendsBoardsModal.tsx` mounted on the leaderboard tab via a
+    "FRIENDS" header button (locked card + paywall CTA for non-Pro).
+  - **Model-based auto-communities** — derived from `users.car_brand` +
+    `users.car_model`; no new tables. Backend router `communities`
+    (`getMyCommunity`, `getCommunityFeed`) in
+    `artifacts/api-server/src/backend/trpc/routes/communities.ts`. UI:
+    `components/CommunityCard.tsx` rendered near the top of the leaderboard tab.
+    Free users see the community read-only with the default "Recent" sort; the
+    "Top Speed" / "Distance" sort options are the Pro perk and route through the
+    paywall when tapped by free users.
 
 ### pnpm + Expo monorepo gotchas (already configured)
 

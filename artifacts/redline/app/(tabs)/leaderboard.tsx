@@ -16,6 +16,8 @@ import { useNotifications } from '@/providers/NotificationProvider';
 import { useSubscription } from '@/lib/revenuecat';
 import AnimatedCard from '@/components/AnimatedCard';
 import ProBadge from '@/components/ProBadge';
+import FriendsBoardsModal from '@/components/FriendsBoardsModal';
+import CommunityCard from '@/components/CommunityCard';
 import { COUNTRIES } from '@/constants/countries';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { LeaderboardCategory, LeaderboardFilters, TripStats } from '@/types/trip';
@@ -113,6 +115,7 @@ export default function LeaderboardScreen() {
   const { pendingAction, clearPendingAction } = useNotifications();
   const [pingComposeFor, setPingComposeFor] = useState<{ id: string; name: string; car?: string } | null>(null);
   const [pingMessage, setPingMessage] = useState<string>('');
+  const [showFriendsBoards, setShowFriendsBoards] = useState(false);
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('topSpeed');
   const [filters, setFilters] = useState<LeaderboardFilters>({});
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -1374,7 +1377,24 @@ export default function LeaderboardScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navHeader}>
         <Text style={styles.navTitle}>Leaderboard</Text>
+        <TouchableOpacity
+          style={styles.friendsBoardsBtn}
+          onPress={() => setShowFriendsBoards(true)}
+          activeOpacity={0.7}
+        >
+          <Trophy size={14} color={colors.accent} />
+          <Text style={styles.friendsBoardsBtnText}>FRIENDS</Text>
+          {!isSubscribed && <ProBadge size="sm" />}
+        </TouchableOpacity>
       </View>
+
+      {user?.id && (
+        <CommunityCard
+          userId={user.id}
+          isSubscribed={isSubscribed}
+          presentPaywall={presentPaywall}
+        />
+      )}
 
       {pendingIncomingPings.length > 0 && (
         <View style={styles.incomingPingBanner}>
@@ -2867,6 +2887,16 @@ export default function LeaderboardScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {user?.id && (
+        <FriendsBoardsModal
+          visible={showFriendsBoards}
+          onClose={() => setShowFriendsBoards(false)}
+          userId={user.id}
+          isSubscribed={isSubscribed}
+          presentPaywall={presentPaywall}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -2882,7 +2912,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingBottom: 12,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    justifyContent: 'space-between' as const,
+  },
+  friendsBoardsBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBackground,
+  },
+  friendsBoardsBtnText: {
+    fontSize: 10,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    letterSpacing: 1,
   },
   podiumContainer: {
     paddingTop: 8,

@@ -7,8 +7,10 @@ import { tripsRouter } from "./routes/trips";
 import { socialRouter } from "./routes/social";
 import { postsRouter } from "./routes/posts";
 import { analyticsRouter } from "./routes/analytics";
+import { privateLeaderboardsRouter } from "./routes/private-leaderboards";
+import { communitiesRouter } from "./routes/communities";
 
-console.log("[ROUTER] Initializing app router v1.1");
+console.log("[ROUTER] Initializing app router v1.2");
 
 export const appRouter = createTRPCRouter({
   example: exampleRouter,
@@ -19,6 +21,8 @@ export const appRouter = createTRPCRouter({
   social: socialRouter,
   posts: postsRouter,
   analytics: analyticsRouter,
+  privateLeaderboards: privateLeaderboardsRouter,
+  communities: communitiesRouter,
 });
 
 export type AppRouter = typeof appRouter;
