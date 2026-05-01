@@ -22,6 +22,8 @@ export interface DriveMeetup {
     longitude: number;
     timestamp: number;
   };
+  fromUserIsPro?: boolean;
+  message?: string;
 }
 
 export interface MeetupNotification {

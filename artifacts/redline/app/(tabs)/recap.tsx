@@ -32,8 +32,12 @@ import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import AnimatedCard from '@/components/AnimatedCard';
 import WeeklyRecapCard from '@/components/WeeklyRecapCard';
+import ProBadge from '@/components/ProBadge';
 import { TripStats } from '@/types/trip';
 import { ThemeColors } from '@/constants/colors';
+import { useSubscription } from '@/lib/revenuecat';
+import { computeProMetrics } from '@/lib/proMetrics';
+import { Lock, Sparkles } from 'lucide-react-native';
 
 type ViewMode = 'recent' | 'recap';
 type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all';
@@ -59,6 +63,7 @@ interface PeriodStats {
 export default function RecapScreen() {
   const { trips } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationShortLabel, colors } = useSettings();
+  const { isSubscribed, presentPaywall } = useSubscription();
   const [viewMode, setViewMode] = useState<ViewMode>('recent');
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('weekly');
   const [showWeeklyRecap, setShowWeeklyRecap] = useState<boolean>(false);
@@ -489,6 +494,93 @@ export default function RecapScreen() {
             </View>
           </View>
         </AnimatedCard>
+
+        {lastTrip && (
+          <AnimatedCard index={8} slideDistance={18} duration={300}>
+            {renderProTelemetry(lastTrip)}
+          </AnimatedCard>
+        )}
+      </View>
+    );
+  };
+
+  const renderProTelemetry = (trip: TripStats) => {
+    if (!isSubscribed) {
+      return (
+        <TouchableOpacity
+          style={styles.proTelemetryLockedCard}
+          activeOpacity={0.85}
+          onPress={() => { void presentPaywall(); }}
+        >
+          <View style={styles.proTelemetryHeaderRow}>
+            <View style={styles.proTelemetryDot} />
+            <Text style={styles.proTelemetryTitle}>PRO TELEMETRY</Text>
+            <ProBadge size="sm" />
+          </View>
+          <View style={styles.proLockedRow}>
+            <Lock size={20} color={colors.textLight} />
+            <View style={styles.proLockedTextWrap}>
+              <Text style={styles.proLockedHeadline}>Unlock Smoothness, Aggression, Driving Style & Best Sector</Text>
+              <Text style={styles.proLockedSub}>Tap to upgrade to RedLine Pro</Text>
+            </View>
+          </View>
+          <View style={styles.proTeaserRow}>
+            <View style={styles.proTeaserPill}><Text style={styles.proTeaserPillText}>Smoothness</Text></View>
+            <View style={styles.proTeaserPill}><Text style={styles.proTeaserPillText}>Aggression</Text></View>
+            <View style={styles.proTeaserPill}><Text style={styles.proTeaserPillText}>Style</Text></View>
+            <View style={styles.proTeaserPill}><Text style={styles.proTeaserPillText}>Sector</Text></View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    const metrics = computeProMetrics(trip);
+    const sectorLabel = metrics.bestSectorIndex
+      ? `S${metrics.bestSectorIndex}`
+      : '—';
+    const sectorSpeed = metrics.bestSectorSpeed != null
+      ? `${convertSpeed(metrics.bestSectorSpeed).toFixed(0)} ${getSpeedLabel()}`
+      : '—';
+
+    return (
+      <View style={styles.proTelemetryCard}>
+        <View style={styles.proTelemetryHeaderRow}>
+          <Sparkles size={14} color="#FFD700" />
+          <Text style={styles.proTelemetryTitle}>PRO TELEMETRY</Text>
+          <ProBadge size="sm" />
+        </View>
+
+        <View style={styles.proMetricRow}>
+          <Text style={styles.proMetricLabel}>Smoothness</Text>
+          <View style={styles.proMetricBarWrap}>
+            <View style={styles.proMetricBarTrack}>
+              <View style={[styles.proMetricBarFillGreen, { width: `${metrics.smoothness}%` }]} />
+            </View>
+            <Text style={styles.proMetricPercent}>{metrics.smoothness}</Text>
+          </View>
+        </View>
+
+        <View style={styles.proMetricRow}>
+          <Text style={styles.proMetricLabel}>Aggression</Text>
+          <View style={styles.proMetricBarWrap}>
+            <View style={styles.proMetricBarTrack}>
+              <View style={[styles.proMetricBarFillRed, { width: `${metrics.aggression}%` }]} />
+            </View>
+            <Text style={styles.proMetricPercent}>{metrics.aggression}</Text>
+          </View>
+        </View>
+
+        <View style={styles.proStyleSectorRow}>
+          <View style={styles.proStyleBlock}>
+            <Text style={styles.proSubLabel}>DRIVING STYLE</Text>
+            <Text style={styles.proStyleValue}>{metrics.drivingStyle}</Text>
+          </View>
+          <View style={styles.proSectorBlock}>
+            <Text style={styles.proSubLabel}>BEST SECTOR</Text>
+            <Text style={styles.proStyleValue}>{sectorLabel}</Text>
+            <Text style={styles.proSectorSub}>{sectorSpeed}</Text>
+          </View>
+        </View>
       </View>
     );
   };
@@ -1068,6 +1160,155 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     width: 42,
     textAlign: 'right' as const,
+  },
+
+  proTelemetryCard: {
+    backgroundColor: colors.cardLight,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFD70033',
+  },
+  proTelemetryLockedCard: {
+    backgroundColor: colors.cardLight,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFD70033',
+  },
+  proTelemetryHeaderRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: 18,
+    gap: 8,
+  },
+  proTelemetryDot: {
+    width: 20,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FFD700',
+    marginRight: 2,
+  },
+  proTelemetryTitle: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    letterSpacing: 1,
+    flex: 1,
+  },
+  proMetricRow: {
+    marginBottom: 14,
+  },
+  proMetricLabel: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    marginBottom: 8,
+  },
+  proMetricBarWrap: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  proMetricBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden' as const,
+  },
+  proMetricBarFillGreen: {
+    height: '100%' as const,
+    backgroundColor: colors.success,
+    borderRadius: 4,
+  },
+  proMetricBarFillRed: {
+    height: '100%' as const,
+    backgroundColor: colors.danger,
+    borderRadius: 4,
+  },
+  proMetricPercent: {
+    fontSize: 14,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    width: 42,
+    textAlign: 'right' as const,
+  },
+  proStyleSectorRow: {
+    flexDirection: 'row' as const,
+    gap: 12,
+    marginTop: 4,
+  },
+  proStyleBlock: {
+    flex: 1,
+    backgroundColor: colors.background === '#000000' ? '#101114' : colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  proSectorBlock: {
+    flex: 1,
+    backgroundColor: colors.background === '#000000' ? '#101114' : colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  proSubLabel: {
+    fontSize: 9,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.textLight,
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  proStyleValue: {
+    fontSize: 16,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+  },
+  proSectorSub: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    marginTop: 2,
+  },
+  proLockedRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    marginBottom: 14,
+  },
+  proLockedTextWrap: {
+    flex: 1,
+  },
+  proLockedHeadline: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  proLockedSub: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+  },
+  proTeaserRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 6,
+  },
+  proTeaserPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.background === '#000000' ? '#101114' : colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  proTeaserPillText: {
+    fontSize: 10,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.textLight,
+    letterSpacing: 0.5,
   },
 
   recapHeader: {

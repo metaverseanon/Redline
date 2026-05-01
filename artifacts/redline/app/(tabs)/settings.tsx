@@ -2,12 +2,13 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Linking, Image, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { router } from 'expo-router';
-import { ChevronRight, Gauge, Ruler, FileText, Shield, User, Car, Sun, Moon, HelpCircle, Bell, Mail, MessageSquare, X, Send, Check, Trophy, Instagram, Link2, Unlink, ImageIcon, Share2, Trash2, QrCode, MapPin } from 'lucide-react-native';
+import { ChevronRight, Gauge, Ruler, FileText, Shield, User, Car, Sun, Moon, HelpCircle, Bell, Mail, MessageSquare, X, Send, Check, Trophy, Instagram, Link2, Unlink, ImageIcon, Share2, Trash2, QrCode, MapPin, Lock, Sparkles, Flag, Zap as ZapIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useSettings, SpeedUnit, DistanceUnit } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
 import { useNotifications } from '@/providers/NotificationProvider';
-import { ThemeType } from '@/constants/colors';
+import { ThemeType, isProTheme } from '@/constants/colors';
+import { useSubscription } from '@/lib/revenuecat';
 import { useAchievements } from '@/providers/AchievementProvider';
 import { useState, useEffect } from 'react';
 import { trpc, trpcClient } from '@/lib/trpc';
@@ -15,6 +16,7 @@ import DailyCard from '@/components/DailyCard';
 
 export default function SettingsScreen() {
   const { settings, colors, setSpeedUnit, setDistanceUnit, setTheme } = useSettings();
+  const { isSubscribed, presentPaywall } = useSubscription();
   const { user, isAuthenticated, getCarDisplayName, updateSocialAccounts, signOut } = useUser();
   const { notificationsEnabled, registerForPushNotifications, disableNotifications } = useNotifications();
   const { unlockedCount, totalCount } = useAchievements();
@@ -66,7 +68,21 @@ export default function SettingsScreen() {
   const themeOptions: { value: ThemeType; label: string; icon: typeof Sun }[] = [
     { value: 'light', label: 'Light', icon: Sun },
     { value: 'dark', label: 'Dark', icon: Moon },
+    { value: 'carbon', label: 'Carbon', icon: Sparkles },
+    { value: 'neon', label: 'Neon', icon: ZapIcon },
+    { value: 'trackday', label: 'Track', icon: Flag },
   ];
+
+  const handleSelectTheme = async (value: ThemeType) => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    if (isProTheme(value) && !isSubscribed) {
+      await presentPaywall();
+      return;
+    }
+    setTheme(value);
+  };
 
   const openPrivacyPolicy = () => {
     void Linking.openURL('https://redlineapp.io/privacy.html');
@@ -324,6 +340,44 @@ export default function SettingsScreen() {
     },
     optionTextActive: {
       color: '#FFFFFF',
+    },
+    themeGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    themeChip: {
+      minWidth: '30%',
+      flexGrow: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: colors.background === '#000000' ? '#1C1C1E' : colors.background,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      position: 'relative',
+    },
+    themeLockBadge: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      backgroundColor: '#FFD700',
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderRadius: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    themeProMini: {
+      fontSize: 8,
+      fontWeight: '900' as const,
+      color: '#0A0A0B',
+      letterSpacing: 0.5,
     },
     divider: {
       height: 1,
@@ -844,23 +898,25 @@ export default function SettingsScreen() {
               </View>
               <Text style={styles.settingLabel}>Appearance</Text>
             </View>
-            <View style={styles.optionsRow}>
+            <View style={styles.themeGrid}>
               {themeOptions.map((option) => {
                 const IconComponent = option.icon;
                 const isActive = settings.theme === option.value;
+                const isPro = isProTheme(option.value);
+                const isLocked = isPro && !isSubscribed;
                 return (
                   <TouchableOpacity
                     key={option.value}
                     style={[
-                      styles.optionButton,
+                      styles.themeChip,
                       isActive && styles.optionButtonActive,
                     ]}
-                    onPress={() => setTheme(option.value)}
+                    onPress={() => { void handleSelectTheme(option.value); }}
                     activeOpacity={0.7}
                   >
-                    <IconComponent 
-                      size={18} 
-                      color={isActive ? '#FFFFFF' : colors.text} 
+                    <IconComponent
+                      size={18}
+                      color={isActive ? '#FFFFFF' : colors.text}
                     />
                     <Text
                       style={[
@@ -870,6 +926,15 @@ export default function SettingsScreen() {
                     >
                       {option.label}
                     </Text>
+                    {isPro && (
+                      <View style={styles.themeLockBadge}>
+                        {isLocked ? (
+                          <Lock size={10} color="#0A0A0B" />
+                        ) : (
+                          <Text style={styles.themeProMini}>PRO</Text>
+                        )}
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}

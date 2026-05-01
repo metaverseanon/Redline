@@ -19,6 +19,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '@/providers/SettingsProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useUser } from '@/providers/UserProvider';
+import { useSubscription } from '@/lib/revenuecat';
+import ProBadge from '@/components/ProBadge';
 import { useTrips } from '@/providers/TripProvider';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -46,6 +48,7 @@ const isValidImageUri = (uri: string | undefined | null): boolean => {
 
 export default function ProfileScreen() {
   const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, syncImagesToBackend } = useUser();
+  const { isSubscribed } = useSubscription();
   const { syncUnsyncedTrips } = useTrips();
   const [authMode, setAuthMode] = useState<'signup' | 'signin'>('signin');
   const { colors } = useSettings();
@@ -861,7 +864,10 @@ export default function ProfileScreen() {
             <CirclePlus color={colors.accent} size={28} fill={colors.background} />
           </View>
         </TouchableOpacity>
-        <Text style={styles.profileName}>{displayName || 'Your Name'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Text style={styles.profileName}>{displayName || 'Your Name'}</Text>
+          {isSubscribed && <ProBadge size="md" />}
+        </View>
         <Text style={styles.tapToChangeText}>TAP PHOTO TO CHANGE</Text>
       </View>
 

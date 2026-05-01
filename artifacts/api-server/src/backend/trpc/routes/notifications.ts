@@ -597,9 +597,11 @@ export const notificationsRouter = createTRPCRouter({
       fromUserId: z.string(),
       fromUserName: z.string(),
       fromUserCar: z.string().optional(),
+      fromUserIsPro: z.boolean().optional(),
       toUserId: z.string(),
       toUserName: z.string(),
       toUserCar: z.string().optional(),
+      message: z.string().trim().max(140).optional(),
     }))
     .mutation(async ({ input }) => {
       console.log("[PUSH] Drive ping from", input.fromUserName, "to", input.toUserId);
@@ -651,9 +653,11 @@ export const notificationsRouter = createTRPCRouter({
         fromUserId: input.fromUserId,
         fromUserName: input.fromUserName,
         fromUserCar: input.fromUserCar,
+        fromUserIsPro: input.fromUserIsPro,
         toUserId: input.toUserId,
         toUserName: input.toUserName,
         toUserCar: input.toUserCar,
+        message: input.message,
         status: 'pending',
         createdAt: now,
         expiresAt: now + 60 * 60 * 1000,
@@ -673,17 +677,21 @@ export const notificationsRouter = createTRPCRouter({
 
       const carInfo = input.fromUserCar ? ` (${input.fromUserCar})` : '';
       const distanceText = Math.round(distance) > 0 ? ` (~${Math.round(distance)} km away)` : '';
+      const proPrefix = input.fromUserIsPro ? '👑 ' : '';
+      const messageLine = input.message ? `\n"${input.message}"` : '';
       const success = await sendExpoPushNotification({
         to: toUser.pushToken,
         title: "🚗 Drive Invite!",
-        body: `${input.fromUserName}${carInfo} wants to go for a drive with you!${distanceText}`,
+        body: `${proPrefix}${input.fromUserName}${carInfo} wants to go for a drive with you!${distanceText}${messageLine}`,
         sound: "default",
         priority: "high",
-        data: { 
-          type: "drive_ping", 
+        data: {
+          type: "drive_ping",
           meetupId,
           fromUserId: input.fromUserId,
           fromUserName: input.fromUserName,
+          fromUserIsPro: input.fromUserIsPro ?? false,
+          message: input.message ?? null,
         },
       });
 

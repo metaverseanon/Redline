@@ -5,9 +5,11 @@ export interface DriveMeetup {
   fromUserId: string;
   fromUserName: string;
   fromUserCar?: string;
+  fromUserIsPro?: boolean;
   toUserId: string;
   toUserName: string;
   toUserCar?: string;
+  message?: string;
   status: MeetupStatus;
   createdAt: number;
   expiresAt: number;

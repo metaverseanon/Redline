@@ -13,7 +13,9 @@ import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
 import { useNotifications } from '@/providers/NotificationProvider';
+import { useSubscription } from '@/lib/revenuecat';
 import AnimatedCard from '@/components/AnimatedCard';
+import ProBadge from '@/components/ProBadge';
 import { COUNTRIES } from '@/constants/countries';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { LeaderboardCategory, LeaderboardFilters, TripStats } from '@/types/trip';
@@ -107,7 +109,10 @@ export default function LeaderboardScreen() {
   const { trips } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, colors } = useSettings();
   const { user } = useUser();
+  const { isSubscribed, presentPaywall } = useSubscription();
   const { pendingAction, clearPendingAction } = useNotifications();
+  const [pingComposeFor, setPingComposeFor] = useState<{ id: string; name: string; car?: string } | null>(null);
+  const [pingMessage, setPingMessage] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('topSpeed');
   const [filters, setFilters] = useState<LeaderboardFilters>({});
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -463,25 +468,49 @@ export default function LeaderboardScreen() {
     }
   }, [userCoords]);
 
-  const handlePingUser = useCallback((targetUserId: string, targetUserName: string, targetUserCar?: string) => {
+  const sendPingNow = useCallback((targetUserId: string, targetUserName: string, targetUserCar?: string, message?: string) => {
     if (!user || targetUserId === user.id || targetUserName === user.displayName) return;
-    
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPingingUserId(targetUserId);
-    
-    const carInfo = user.carBrand && user.carModel 
-      ? `${user.carBrand} ${user.carModel}` 
+
+    const carInfo = user.carBrand && user.carModel
+      ? `${user.carBrand} ${user.carModel}`
       : undefined;
-    
+
     sendPingMutation.mutate({
       fromUserId: user.id,
       fromUserName: user.displayName,
       fromUserCar: carInfo,
+      fromUserIsPro: isSubscribed,
       toUserId: targetUserId,
       toUserName: targetUserName,
       toUserCar: targetUserCar,
+      message: message?.trim() ? message.trim() : undefined,
     });
-  }, [user, sendPingMutation]);
+  }, [user, sendPingMutation, isSubscribed]);
+
+  const handlePingUser = useCallback((targetUserId: string, targetUserName: string, targetUserCar?: string) => {
+    if (!user || targetUserId === user.id || targetUserName === user.displayName) return;
+
+    if (isSubscribed) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setPingMessage('');
+      setPingComposeFor({ id: targetUserId, name: targetUserName, car: targetUserCar });
+      return;
+    }
+
+    sendPingNow(targetUserId, targetUserName, targetUserCar);
+  }, [user, isSubscribed, sendPingNow]);
+
+  const handleSendComposedPing = useCallback(() => {
+    if (!pingComposeFor) return;
+    const { id, name, car } = pingComposeFor;
+    const msg = pingMessage;
+    setPingComposeFor(null);
+    setPingMessage('');
+    sendPingNow(id, name, car, msg);
+  }, [pingComposeFor, pingMessage, sendPingNow]);
 
   const handleRespondToPing = useCallback(async (meetupId: string, response: 'accepted' | 'declined') => {
     if (!user) return;
@@ -2293,7 +2322,10 @@ export default function LeaderboardScreen() {
                               </Text>
                             </View>
                             <View style={styles.meetupItemInfo}>
-                              <Text style={styles.meetupItemName}>{meetup.fromUserName}</Text>
+                              <View style={styles.meetupItemNameRow}>
+                                <Text style={styles.meetupItemName}>{meetup.fromUserName}</Text>
+                                {meetup.fromUserIsPro && <ProBadge size="sm" />}
+                              </View>
                               {meetup.fromUserCar && (
                                 <View style={styles.nearbyDriverCarRow}>
                                   <Car size={10} color={colors.primary} />
@@ -2305,6 +2337,11 @@ export default function LeaderboardScreen() {
                               </Text>
                             </View>
                           </View>
+                          {meetup.message && (
+                            <View style={styles.meetupMessageBubble}>
+                              <Text style={styles.meetupMessageText}>&quot;{meetup.message}&quot;</Text>
+                            </View>
+                          )}
                           <MeetupCountdownBar createdAt={meetup.createdAt} expiresAt={meetup.expiresAt} colors={colors} />
                           <View style={styles.meetupActions}>
                             <TouchableOpacity
@@ -2771,6 +2808,63 @@ export default function LeaderboardScreen() {
               ))}
             </ScrollView>
           </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={pingComposeFor !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setPingComposeFor(null); setPingMessage(''); }}
+      >
+        <Pressable
+          style={styles.pingComposeOverlay}
+          onPress={() => { setPingComposeFor(null); setPingMessage(''); }}
+        >
+          <Pressable style={styles.pingComposeCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.pingComposeHeader}>
+              <Send size={18} color={colors.accent} />
+              <Text style={styles.pingComposeTitle}>
+                {pingComposeFor ? `Ping ${pingComposeFor.name}` : 'Ping'}
+              </Text>
+              <ProBadge size="sm" />
+              <TouchableOpacity
+                onPress={() => { setPingComposeFor(null); setPingMessage(''); }}
+                style={styles.pingComposeCloseBtn}
+                activeOpacity={0.7}
+              >
+                <X size={20} color={colors.textLight} />
+              </TouchableOpacity>
+            </View>
+            {pingComposeFor?.car && (
+              <View style={styles.pingComposeCarRow}>
+                <Car size={12} color={colors.textLight} />
+                <Text style={styles.pingComposeCarText}>{pingComposeFor.car}</Text>
+              </View>
+            )}
+            <Text style={styles.pingComposeHint}>
+              Add a personal message (optional, max 140 chars)
+            </Text>
+            <TextInput
+              style={styles.pingComposeInput}
+              value={pingMessage}
+              onChangeText={(t) => setPingMessage(t.slice(0, 140))}
+              placeholder="e.g. coffee at the lookout?"
+              placeholderTextColor={colors.textLight}
+              multiline
+              maxLength={140}
+              autoFocus
+            />
+            <Text style={styles.pingComposeCounter}>{pingMessage.length}/140</Text>
+            <TouchableOpacity
+              style={styles.pingComposeSendBtn}
+              onPress={handleSendComposedPing}
+              activeOpacity={0.8}
+            >
+              <Send size={16} color="#FFFFFF" />
+              <Text style={styles.pingComposeSendText}>SEND PING</Text>
+            </TouchableOpacity>
+          </Pressable>
         </Pressable>
       </Modal>
     </SafeAreaView>
@@ -3996,6 +4090,114 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Orbitron_600SemiBold',
     color: colors.text,
+  },
+  meetupItemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  meetupMessageBubble: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: colors.cardBackground,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+  },
+  meetupMessageText: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.text,
+    fontStyle: 'italic',
+  },
+  pingComposeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  pingComposeCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pingComposeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  pingComposeTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+  },
+  pingComposeCloseBtn: {
+    padding: 4,
+  },
+  pingComposeCarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 12,
+  },
+  pingComposeCarText: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+  },
+  pingComposeHint: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    marginTop: 8,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  pingComposeInput: {
+    minHeight: 80,
+    maxHeight: 140,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBackground,
+    color: colors.text,
+    fontFamily: 'Orbitron_400Regular',
+    fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  pingComposeCounter: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    fontSize: 10,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+  },
+  pingComposeSendBtn: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+  },
+  pingComposeSendText: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_700Bold',
+    color: '#FFFFFF',
+    letterSpacing: 1,
   },
   meetupItemTime: {
     fontSize: 10,
