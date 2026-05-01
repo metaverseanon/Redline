@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Image, Platform, Alert, ActivityIndicator, Linking, Animated } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Image, Platform, Alert, ActivityIndicator, Linking, Animated, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trophy, Zap, Navigation, Gauge, ChevronDown, X, MapPin, Car, Filter, Activity, Route, Search, Clock, Calendar, CornerDownRight, ChevronRight, Timer, Users, Send, Bell, Check, XCircle, Share2, Navigation2, MessageCircle, AlertCircle, UserPlus, UserCheck } from 'lucide-react-native';
 import * as Location from 'expo-location';
@@ -840,9 +840,11 @@ export default function LeaderboardScreen() {
     {
       staleTime: 60_000,
       gcTime: 10 * 60_000,
-      refetchOnMount: false,
+      refetchOnMount: true,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      retry: 3,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       placeholderData: keepPreviousData,
       enabled: activeCategory !== 'challengesCompleted',
     }
@@ -854,12 +856,30 @@ export default function LeaderboardScreen() {
       enabled: activeCategory === 'challengesCompleted',
       staleTime: 60_000,
       gcTime: 10 * 60_000,
-      refetchOnMount: false,
+      refetchOnMount: true,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      retry: 3,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       placeholderData: keepPreviousData,
     }
   );
+
+  const activeQuery = activeCategory === 'challengesCompleted' ? challengesLeaderboardQuery : leaderboardTripsQuery;
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const handleManualRefresh = useCallback(async () => {
+    setIsManualRefreshing(true);
+    try {
+      await Promise.all([
+        leaderboardTripsQuery.refetch(),
+        challengesLeaderboardQuery.refetch(),
+      ]);
+    } catch (e) {
+      console.warn('[LEADERBOARD] manual refresh failed:', e);
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [leaderboardTripsQuery, challengesLeaderboardQuery]);
 
   const filteredLocalTrips = useMemo(() => {
     const timePeriodStart = getTimePeriodStart(timePeriod);
@@ -1513,7 +1533,31 @@ export default function LeaderboardScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isManualRefreshing}
+            onRefresh={handleManualRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.cardBackground}
+          />
+        }
+      >
+        {activeQuery.isError && (
+          <TouchableOpacity
+            style={styles.errorBanner}
+            onPress={handleManualRefresh}
+            activeOpacity={0.8}
+          >
+            <AlertCircle size={16} color={colors.danger} />
+            <Text style={styles.errorBannerText}>
+              Couldn't load global leaderboard. Tap to retry.
+            </Text>
+          </TouchableOpacity>
+        )}
         {activeCategory === 'challengesCompleted' ? (
           challengesLeaderboardData.length === 0 ? (
             <View style={styles.emptyState}>
@@ -3291,6 +3335,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: 48,
     alignItems: 'center',
     marginTop: 20,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${colors.danger}15`,
+    borderWidth: 1,
+    borderColor: `${colors.danger}40`,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.danger,
   },
   emptyText: {
     fontSize: 16,

@@ -595,9 +595,18 @@ export const socialRouter = createTRPCRouter({
       return cachedOrFetch(`challenges-leaderboard:${input.limit}`, 60_000, async () => {
       console.log("[SOCIAL] Fetching challenges leaderboard");
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         const achUrl = `${getSupabaseRestUrl("user_achievements")}?select=user_id,achievement_id`;
-        const achResp = await fetch(achUrl, { method: "GET", headers: getSupabaseHeaders() });
-        if (!achResp.ok) return [];
+        let achResp: Response;
+        try {
+          achResp = await fetch(achUrl, { method: "GET", headers: getSupabaseHeaders(), signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        if (!achResp.ok) {
+          throw new Error(`Supabase user_achievements ${achResp.status}`);
+        }
 
         const achRows: { user_id: string; achievement_id: string }[] = await achResp.json();
 
@@ -633,8 +642,9 @@ export const socialRouter = createTRPCRouter({
           };
         });
       } catch (error) {
-        console.error("[SOCIAL] Challenges leaderboard error:", error);
-        return [];
+        const isAbort = error instanceof Error && error.name === 'AbortError';
+        console.error("[SOCIAL] Challenges leaderboard error:", isAbort ? 'timed out after 20s' : error);
+        throw error;
       }
       });
     }),

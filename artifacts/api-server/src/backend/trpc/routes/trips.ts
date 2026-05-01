@@ -566,15 +566,23 @@ async function getTotalDistanceLeaderboard(input: {
 
     console.log("[LEADERBOARD] totalDistance fetch from:", url);
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: getSupabaseHeaders(),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: getSupabaseHeaders(),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const error = await response.text();
       console.error("[LEADERBOARD] totalDistance fetch failed:", error);
-      return [];
+      throw new Error(`Supabase ${response.status}`);
     }
 
     const rows: SupabaseTripRow[] = await response.json();
@@ -603,8 +611,9 @@ async function getTotalDistanceLeaderboard(input: {
     console.log("[LEADERBOARD] totalDistance aggregated:", aggregated.length, "users");
     return await enrichTripsWithUserCars(aggregated);
   } catch (error) {
-    console.error("[LEADERBOARD] totalDistance error:", error);
-    return [];
+    const isAbort = error instanceof Error && error.name === 'AbortError';
+    console.error("[LEADERBOARD] totalDistance error:", isAbort ? 'timed out after 20s' : error);
+    throw error;
   }
 }
 
@@ -749,7 +758,7 @@ export const tripsRouter = createTRPCRouter({
         let url = getSupabaseRestUrl("trips");
         const params: string[] = [];
         
-        params.push("select=id,user_id,user_name,user_profile_picture,start_time,end_time,distance,duration,avg_speed,top_speed,corners,car_model,acceleration,max_g_force,country,city,time_0_to_100,time_0_to_200,time_100_to_200,time_0_to_300,route_points");
+        params.push("select=id,user_id,user_name,user_profile_picture,start_time,end_time,distance,duration,avg_speed,top_speed,corners,car_model,acceleration,max_g_force,country,city,time_0_to_100,time_0_to_200,time_100_to_200,time_0_to_300");
 
         if (LEADERBOARD_EXCLUDED_USER_IDS.length > 0) {
           params.push(`user_id=not.in.(${LEADERBOARD_EXCLUDED_USER_IDS.map(id => encodeURIComponent(id)).join(",")})`);
@@ -844,15 +853,23 @@ export const tripsRouter = createTRPCRouter({
 
         console.log("[LEADERBOARD] Fetching from:", url);
 
-        const response = await fetch(url, {
-          method: "GET",
-          headers: getSupabaseHeaders(),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            method: "GET",
+            headers: getSupabaseHeaders(),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         if (!response.ok) {
           const error = await response.text();
           console.error("[LEADERBOARD] Failed to fetch trips:", response.status, error);
-          return [];
+          throw new Error(`Supabase ${response.status}`);
         }
 
         const rows: SupabaseTripRow[] = await response.json();
@@ -874,8 +891,9 @@ export const tripsRouter = createTRPCRouter({
         
         return await enrichTripsWithUserCars(trips);
       } catch (error) {
-        console.error("[LEADERBOARD] Error fetching trips:", error);
-        return [];
+        const isAbort = error instanceof Error && error.name === 'AbortError';
+        console.error("[LEADERBOARD] Error fetching trips:", isAbort ? 'timed out after 20s' : error);
+        throw error;
       }
       });
     }),
