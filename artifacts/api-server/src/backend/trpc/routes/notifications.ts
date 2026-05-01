@@ -204,26 +204,40 @@ async function getUsersWithPushTokens(): Promise<UserWithToken[]> {
   }
 }
 
-async function getUsersWithLocations(): Promise<StoredUserWithLocation[]> {
+async function getUsersWithLocationsByIds(ids: string[]): Promise<StoredUserWithLocation[]> {
   if (!isDbConfigured()) {
     console.log("[PUSH] Database not configured");
     return [];
   }
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
 
   try {
-    const response = await fetch(getSupabaseRestUrl("users"), {
-      method: "GET",
-      headers: getSupabaseHeaders(),
-    });
+    const idsParam = uniqueIds.map(id => `"${id}"`).join(",");
+    const url = `${getSupabaseRestUrl("users")}?select=id,display_name,push_token,country,car_brand,car_model,latitude,longitude&id=in.(${encodeURIComponent(idsParam)})&limit=${uniqueIds.length}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: getSupabaseHeaders(),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
-      console.error("[PUSH] Failed to fetch users with locations");
+      const text = await response.text();
+      console.error("[PUSH] Failed to fetch users by ids:", response.status, text);
       return [];
     }
 
-    const data = await response.json();
-    const users = data.items || data || [];
-    
+    const data = (await response.json()) as any;
+    const users = (Array.isArray(data) ? data : (data?.items ?? [])) as any[];
+
     return users.map((u: any) => ({
       id: u.id,
       displayName: u.display_name,
@@ -235,7 +249,7 @@ async function getUsersWithLocations(): Promise<StoredUserWithLocation[]> {
       longitude: u.longitude ?? null,
     }));
   } catch (error) {
-    console.error("[PUSH] Error fetching users with locations:", error);
+    console.error("[PUSH] Error fetching users by ids:", error);
     return [];
   }
 }
@@ -593,16 +607,21 @@ export const notificationsRouter = createTRPCRouter({
       if (input.fromUserId === input.toUserId) {
         return { success: false, message: "You cannot ping yourself" };
       }
-      
-      const allUsers = await getUsersWithLocations();
-      const fromUser = allUsers.find(u => u.id === input.fromUserId);
-      const toUser = allUsers.find(u => u.id === input.toUserId);
+
+      const lookupUsers = await getUsersWithLocationsByIds([input.fromUserId, input.toUserId]);
+      const fromUser = lookupUsers.find(u => u.id === input.fromUserId);
+      const toUser = lookupUsers.find(u => u.id === input.toUserId);
 
       if (!toUser || !toUser.pushToken) {
         return { success: false, message: "User not found or notifications not enabled" };
       }
 
-      if (fromUser?.latitude == null || fromUser?.longitude == null) {
+      if (!fromUser) {
+        console.log("[PUSH] Sender row not found in DB:", input.fromUserId);
+        return { success: false, message: "Your account couldn't be found. Try restarting the app." };
+      }
+
+      if (fromUser.latitude == null || fromUser.longitude == null) {
         console.log("[PUSH] Sender has no stored location");
         return { success: false, message: "Your location is not set. Please enable location services and try again." };
       }
@@ -706,8 +725,8 @@ export const notificationsRouter = createTRPCRouter({
       };
 
       if (input.response === 'accepted') {
-        const allUsers = await getUsersWithLocations();
-        const responder = allUsers.find(u => u.id === input.responderId);
+        const lookupUsers = await getUsersWithLocationsByIds([input.responderId, meetup.fromUserId]);
+        const responder = lookupUsers.find(u => u.id === input.responderId);
         if (responder?.latitude != null && responder?.longitude != null) {
           updateData.toUserLocation = {
             latitude: responder.latitude,
@@ -715,7 +734,7 @@ export const notificationsRouter = createTRPCRouter({
             timestamp: now,
           };
         }
-        const sender = allUsers.find(u => u.id === meetup.fromUserId);
+        const sender = lookupUsers.find(u => u.id === meetup.fromUserId);
         if (sender?.latitude != null && sender?.longitude != null) {
           updateData.fromUserLocation = {
             latitude: sender.latitude,
