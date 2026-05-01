@@ -26,7 +26,15 @@ import {
   MapPin,
   Share2,
 } from 'lucide-react-native';
-import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+let MapView: any = null;
+let Polyline: any = null;
+let PROVIDER_DEFAULT: any = undefined;
+if (Platform.OS !== 'web') {
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Polyline = Maps.Polyline;
+  PROVIDER_DEFAULT = Maps.PROVIDER_DEFAULT;
+}
 import * as Haptics from 'expo-haptics';
 import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -434,7 +442,7 @@ export default function RecapScreen() {
           </View>
         </AnimatedCard>
 
-        {routeCoordinates.length >= 2 && mapRegion && (
+        {routeCoordinates.length >= 2 && mapRegion && Platform.OS !== 'web' && MapView && (
           <>
             <View style={styles.mapHeader}>
               <Text style={styles.mapTitle}>TRIP ROUTE</Text>

@@ -16,4 +16,20 @@ config.resolver.nodeModulesPaths = [
 config.resolver.unstable_enableSymlinks = true;
 config.resolver.unstable_enablePackageExports = true;
 
+const mapsWebStub = path.resolve(projectRoot, "lib/react-native-maps.web.js");
+
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === "web" && moduleName === "react-native-maps") {
+    return {
+      filePath: mapsWebStub,
+      type: "sourceFile",
+    };
+  }
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;

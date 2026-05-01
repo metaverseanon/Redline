@@ -8,7 +8,15 @@ import * as Haptics from 'expo-haptics';
 import { trpc } from '@/lib/trpc';
 import { keepPreviousData } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import MapView, { Polyline, Marker } from 'react-native-maps';
+let MapView: any = null;
+let Polyline: any = null;
+let Marker: any = null;
+if (Platform.OS !== 'web') {
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Polyline = Maps.Polyline;
+  Marker = Maps.Marker;
+}
 import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';

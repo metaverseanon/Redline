@@ -56,9 +56,13 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - The platform proxy passes `/api/*` to the API server **without rewriting**, so all
   Hono routes are mounted under their full path (e.g. `/api/trpc/*`,
   `/api/healthz`, `/api/cron/*`).
-- Web bundling fails for the Expo app because `react-native-maps` is native-only —
-  the app is intended for mobile (Expo Go), not the web preview iframe. The iOS
-  and Android bundles compile cleanly.
+- Web bundling: `react-native-maps` is native-only, so on the web platform
+  Metro aliases the package to `lib/react-native-maps.web.js` (a thin View-based
+  stub) via `metro.config.js` `resolver.resolveRequest`. This lets the Expo web
+  bundle compile cleanly for the canvas preview iframe. iOS/Android bundles use
+  the real native module unchanged. Any new map UI must still be guarded with
+  `Platform.OS !== 'web'` checks at the render site so the stub is never relied
+  on for actual map functionality.
 - **Subscriptions (RevenueCat):** integrated via `react-native-purchases` and
   `react-native-purchases-ui`. The SDK is initialized at app boot (`_layout.tsx`)
   and identified to the backend user inside `UserProvider` via `SubscriptionProvider`.
