@@ -78,7 +78,17 @@ export default function SettingsScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (isProTheme(value) && !isSubscribed) {
-      await presentPaywall();
+      const result = await presentPaywall();
+      if (result === 'purchased' || result === 'restored') {
+        setTheme(value);
+        return;
+      }
+      if (result === 'not_presented' || result === 'error') {
+        Alert.alert(
+          'Pro themes',
+          'This theme is part of RedLine Pro. The upgrade screen could not be opened right now — please try again in a moment, or check your connection.',
+        );
+      }
       return;
     }
     setTheme(value);

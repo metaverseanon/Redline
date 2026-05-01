@@ -1387,8 +1387,21 @@ export default function LeaderboardScreen() {
         <Text style={styles.navTitle}>Leaderboard</Text>
         <TouchableOpacity
           style={styles.friendsBoardsBtn}
-          onPress={() => setShowFriendsBoards(true)}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            if (!user?.id) {
+              Alert.alert(
+                'Sign in required',
+                'You need to be signed in to use Friends Boards. Open the Settings tab to sign in.',
+              );
+              return;
+            }
+            setShowFriendsBoards(true);
+          }}
           activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Trophy size={14} color={colors.accent} />
           <Text style={styles.friendsBoardsBtnText}>FRIENDS</Text>
@@ -1460,16 +1473,19 @@ export default function LeaderboardScreen() {
         </View>
       )}
 
-      {userLocation && (
+      {(userLocation || nearbyUsers.length > 0 || activeMeetups.length > 0 || pendingIncomingPings.length > 0) && (
         <View style={styles.userLocationBanner}>
           <MapPin size={14} color={colors.primary} />
-          <Text style={styles.userLocationText}>{userLocation}</Text>
+          <Text style={styles.userLocationText} numberOfLines={1}>
+            {userLocation ?? (nearbyUsers.length > 0 ? 'Nearby drivers' : 'Location')}
+          </Text>
           <View style={styles.bannerButtonsRow}>
             {nearbyUsers.length > 0 && (
               <TouchableOpacity
                 style={styles.nearbyDriversButton}
                 onPress={() => { setShowNearbyDrivers(true); requestAnimationFrame(() => setNearbyModalReady(true)); }}
                 activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Users size={14} color={colors.textInverted} />
                 <Text style={styles.nearbyDriversButtonText}>{nearbyUsers.length} Nearby</Text>
@@ -2896,15 +2912,13 @@ export default function LeaderboardScreen() {
         </Pressable>
       </Modal>
 
-      {user?.id && (
-        <FriendsBoardsModal
-          visible={showFriendsBoards}
-          onClose={() => setShowFriendsBoards(false)}
-          userId={user.id}
-          isSubscribed={isSubscribed}
-          presentPaywall={presentPaywall}
-        />
-      )}
+      <FriendsBoardsModal
+        visible={showFriendsBoards && !!user?.id}
+        onClose={() => setShowFriendsBoards(false)}
+        userId={user?.id ?? ''}
+        isSubscribed={isSubscribed}
+        presentPaywall={presentPaywall}
+      />
     </SafeAreaView>
   );
 }
