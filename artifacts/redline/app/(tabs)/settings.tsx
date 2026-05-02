@@ -17,7 +17,7 @@ import DailyCard from '@/components/DailyCard';
 
 export default function SettingsScreen() {
   const { settings, colors, setSpeedUnit, setDistanceUnit, setTheme } = useSettings();
-  const { isSubscribed, presentPaywall } = useSubscription();
+  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const { user, isAuthenticated, getCarDisplayName, updateSocialAccounts, signOut } = useUser();
   const { notificationsEnabled, registerForPushNotifications, disableNotifications } = useNotifications();
   const { unlockedCount, totalCount } = useAchievements();
@@ -85,9 +85,12 @@ export default function SettingsScreen() {
         return;
       }
       if (result === 'not_presented' || result === 'error') {
+        const reason = getLastPaywallError?.();
         Alert.alert(
           'Pro themes',
-          'This theme is part of RedLine Pro. The upgrade screen could not be opened right now — please try again in a moment, or check your connection.',
+          reason
+            ? `This theme is part of RedLine Pro.\n\n${reason}`
+            : 'This theme is part of RedLine Pro. The upgrade screen could not be opened right now — please try again in a moment, or check your connection.',
         );
       }
       return;

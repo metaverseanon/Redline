@@ -20,10 +20,11 @@ interface CommunityCardProps {
   userId: string;
   isSubscribed: boolean;
   presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
+  getLastPaywallError?: () => string | null;
   defaultExpanded?: boolean;
 }
 
-export default function CommunityCard({ userId, isSubscribed, presentPaywall, defaultExpanded = false }: CommunityCardProps) {
+export default function CommunityCard({ userId, isSubscribed, presentPaywall, getLastPaywallError, defaultExpanded = false }: CommunityCardProps) {
   const { colors, convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel } = useSettings();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -54,18 +55,19 @@ export default function CommunityCard({ userId, isSubscribed, presentPaywall, de
     try {
       const result = (await presentPaywall()) as PaywallResult | void;
       if (result === 'not_presented' || result === 'error') {
+        const reason = getLastPaywallError?.();
         Alert.alert(
           'Pro feature',
-          'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
+          reason ?? 'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
         );
       }
-    } catch {
+    } catch (e: any) {
       Alert.alert(
         'Pro feature',
-        'The upgrade screen could not be opened right now. Please try again.',
+        `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`,
       );
     }
-  }, [presentPaywall]);
+  }, [presentPaywall, getLastPaywallError]);
 
   const handleSortPress = (option: Sort, isPro: boolean) => {
     if (isPro && !isSubscribed) {

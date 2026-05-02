@@ -120,7 +120,7 @@ export default function LeaderboardScreen() {
   const { trips } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, colors } = useSettings();
   const { user } = useUser();
-  const { isSubscribed, presentPaywall } = useSubscription();
+  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const { pendingAction, clearPendingAction } = useNotifications();
   const [pingComposeFor, setPingComposeFor] = useState<{ id: string; name: string; car?: string } | null>(null);
   const [pingMessage, setPingMessage] = useState<string>('');
@@ -1543,6 +1543,7 @@ export default function LeaderboardScreen() {
           userId={user.id}
           isSubscribed={isSubscribed}
           presentPaywall={presentPaywall}
+          getLastPaywallError={getLastPaywallError}
         />
       )}
 
@@ -2949,6 +2950,7 @@ export default function LeaderboardScreen() {
         userId={user?.id ?? ''}
         isSubscribed={isSubscribed}
         presentPaywall={presentPaywall}
+        getLastPaywallError={getLastPaywallError}
       />
     </SafeAreaView>
   );

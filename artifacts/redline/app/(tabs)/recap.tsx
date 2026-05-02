@@ -537,7 +537,7 @@ export default function RecapScreen() {
         <TouchableOpacity
           style={styles.proTelemetryLockedCard}
           activeOpacity={0.85}
-          onPress={() => { void presentPaywall(); }}
+          onPress={() => { void handleProUpgradePress(); }}
         >
           <View style={styles.proTelemetryHeaderRow}>
             <View style={styles.proTelemetryDot} />

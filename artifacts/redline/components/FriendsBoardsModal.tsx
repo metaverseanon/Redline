@@ -36,6 +36,7 @@ interface FriendsBoardsModalProps {
   userId: string;
   isSubscribed: boolean;
   presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
+  getLastPaywallError?: () => string | null;
 }
 
 type ViewMode = 'list' | 'create' | 'details';
@@ -46,6 +47,7 @@ export default function FriendsBoardsModal({
   userId,
   isSubscribed,
   presentPaywall,
+  getLastPaywallError,
 }: FriendsBoardsModalProps) {
   const { colors } = useSettings();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -118,20 +120,21 @@ export default function FriendsBoardsModal({
     try {
       const result = (await presentPaywall()) as PaywallResult | void;
       if (result === 'not_presented' || result === 'error') {
+        const reason = getLastPaywallError?.();
         Alert.alert(
           'Friends Boards (Pro)',
-          'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
+          reason ?? 'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
         );
       }
       return result;
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert(
         'Friends Boards (Pro)',
-        'The upgrade screen could not be opened right now. Please try again.',
+        `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`,
       );
       return 'error' as const;
     }
-  }, [presentPaywall]);
+  }, [presentPaywall, getLastPaywallError]);
 
   const handleCreatePress = useCallback(() => {
     if (!isSubscribed) {
