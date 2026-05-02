@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useCallback, useEffect, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -11,6 +12,15 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "RedLine App Pro";
 
 export const REVENUECAT_PACKAGE_MONTHLY = "monthly";
 export const REVENUECAT_PACKAGE_YEARLY = "yearly";
+
+const PRO_OVERRIDE_EMAILS: string[] = [
+  "tonii8167@gmail.com",
+];
+
+function hasProOverride(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return PRO_OVERRIDE_EMAILS.includes(email.trim().toLowerCase());
+}
 
 let PurchasesModule: any = null;
 let PurchasesUIModule: any = null;
@@ -112,9 +122,11 @@ export async function identifyRevenueCatUser(userId: string | null | undefined) 
   }
 }
 
-function useSubscriptionContext(userId?: string | null) {
+function useSubscriptionContext(userId?: string | null, userEmail?: string | null) {
   const queryClient = useQueryClient();
   const [configured, setConfigured] = useState<boolean>(isConfigured);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const paywallResolveRef = useRef<((result: PaywallResult) => void) | null>(null);
 
   useEffect(() => {
     if (isConfigured) {
@@ -172,19 +184,29 @@ function useSubscriptionContext(userId?: string | null) {
     },
   });
 
-  const lastPaywallErrorRef = React.useRef<string | null>(null);
+  const lastPaywallErrorRef = useRef<string | null>(null);
+
+  const ensureOfferingLoaded = useCallback(async (): Promise<boolean> => {
+    if (offeringsQuery.data?.current) return true;
+    if (!PurchasesModule || Platform.OS === "web") return false;
+    try {
+      const fresh = await PurchasesModule.getOfferings();
+      if (fresh?.current) {
+        queryClient.setQueryData(["revenuecat", "offerings"], fresh);
+        return true;
+      }
+    } catch (err) {
+      console.error("[RC] getOfferings refetch failed:", err);
+    }
+    return false;
+  }, [offeringsQuery.data, queryClient]);
 
   const presentPaywall = useCallback(
-    async (options?: { offering?: any; requiredEntitlementIdentifier?: string }): Promise<"purchased" | "restored" | "cancelled" | "error" | "not_presented"> => {
+    async (): Promise<PaywallResult> => {
       lastPaywallErrorRef.current = null;
       if (Platform.OS === "web") {
         lastPaywallErrorRef.current = "Web platform — paywall unavailable.";
         console.warn("[RC] Paywall UI unavailable on web");
-        return "not_presented";
-      }
-      if (!PurchasesUIModule) {
-        lastPaywallErrorRef.current = "react-native-purchases-ui module not loaded in this build.";
-        console.warn("[RC] PurchasesUIModule not loaded");
         return "not_presented";
       }
       if (!isConfigured) {
@@ -193,65 +215,32 @@ function useSubscriptionContext(userId?: string | null) {
         console.warn("[RC] presentPaywall called before SDK configured");
         return "error";
       }
-      try {
-        let offering = options?.offering ?? offeringsQuery.data?.current;
-        if (!offering) {
-          console.warn("[RC] No current offering cached; refetching offerings before giving up");
-          try {
-            const fresh = await PurchasesModule.getOfferings();
-            offering = fresh?.current ?? null;
-            if (offering) {
-              queryClient.setQueryData(["revenuecat", "offerings"], fresh);
-            }
-          } catch (refetchErr) {
-            console.error("[RC] getOfferings refetch failed:", refetchErr);
-            lastPaywallErrorRef.current =
-              "Could not load subscription offerings from RevenueCat. Check internet connection and that the RevenueCat API key is valid for this app.";
-            return "error";
-          }
-        }
-        if (!offering) {
-          lastPaywallErrorRef.current =
-            "No current offering is configured in RevenueCat. Ask the developer to set a Current Offering in the RevenueCat dashboard for the iOS app.";
-          console.warn("[RC] No current offering available to present");
-          return "error";
-        }
 
-        const presenter = options?.requiredEntitlementIdentifier
-          ? PurchasesUIModule.presentPaywallIfNeeded
-          : PurchasesUIModule.presentPaywall;
-
-        const result = await presenter({
-          offering,
-          ...(options?.requiredEntitlementIdentifier && {
-            requiredEntitlementIdentifier: options.requiredEntitlementIdentifier,
-          }),
-        });
-
-        await queryClient.invalidateQueries({ queryKey: ["revenuecat", "customer-info"] });
-
-        const PAYWALL_RESULT = PurchasesUIModule.PAYWALL_RESULT ?? {};
-        switch (result) {
-          case PAYWALL_RESULT.PURCHASED:
-            return "purchased";
-          case PAYWALL_RESULT.RESTORED:
-            return "restored";
-          case PAYWALL_RESULT.CANCELLED:
-            return "cancelled";
-          case PAYWALL_RESULT.NOT_PRESENTED:
-            return "not_presented";
-          default:
-            return "error";
-        }
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        lastPaywallErrorRef.current = `Paywall failed to open: ${msg}`;
-        console.error("[RC] presentPaywall failed:", err);
+      const hasOffering = await ensureOfferingLoaded();
+      if (!hasOffering) {
+        lastPaywallErrorRef.current =
+          "No current offering is configured in RevenueCat. Ask the developer to set a Current Offering in the RevenueCat dashboard for the iOS app.";
+        console.warn("[RC] No current offering available to present");
         return "error";
       }
+
+      return new Promise<PaywallResult>((resolve) => {
+        paywallResolveRef.current = resolve;
+        setPaywallVisible(true);
+      });
     },
-    [offeringsQuery.data, queryClient]
+    [ensureOfferingLoaded]
   );
+
+  const handlePaywallClose = useCallback((result: PaywallResult) => {
+    setPaywallVisible(false);
+    const resolver = paywallResolveRef.current;
+    paywallResolveRef.current = null;
+    if (result === "purchased" || result === "restored") {
+      void queryClient.invalidateQueries({ queryKey: ["revenuecat", "customer-info"] });
+    }
+    if (resolver) resolver(result);
+  }, [queryClient]);
 
   const getLastPaywallError = useCallback(() => lastPaywallErrorRef.current, []);
 
@@ -271,7 +260,9 @@ function useSubscriptionContext(userId?: string | null) {
   }, [queryClient]);
 
   const customerInfo = customerInfoQuery.data;
-  const isSubscribed = !!customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+  const isSubscribedFromRC = !!customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+  const isSubscribedFromOverride = hasProOverride(userEmail);
+  const isSubscribed = isSubscribedFromRC || isSubscribedFromOverride;
 
   const currentOffering = offeringsQuery.data?.current ?? null;
   const monthlyPackage = currentOffering?.availablePackages?.find(
@@ -298,14 +289,24 @@ function useSubscriptionContext(userId?: string | null) {
     presentCustomerCenter,
     getLastPaywallError,
     refetchCustomerInfo: customerInfoQuery.refetch,
+    paywallVisible,
+    handlePaywallClose,
   };
 }
 
 type SubscriptionContextValue = ReturnType<typeof useSubscriptionContext>;
 const Context = createContext<SubscriptionContextValue | null>(null);
 
-export function SubscriptionProvider({ children, userId }: { children: React.ReactNode; userId?: string | null }) {
-  const value = useSubscriptionContext(userId);
+export function SubscriptionProvider({
+  children,
+  userId,
+  userEmail,
+}: {
+  children: React.ReactNode;
+  userId?: string | null;
+  userEmail?: string | null;
+}) {
+  const value = useSubscriptionContext(userId, userEmail);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -321,7 +322,19 @@ export function SubscriptionProvider({ children, userId }: { children: React.Rea
     };
   }, [userId, value.isAvailable, queryClient]);
 
-  return <Context.Provider value={value}>{children}</Context.Provider>;
+  return (
+    <Context.Provider value={value}>
+      {children}
+      <CustomPaywallModal
+        visible={value.paywallVisible}
+        monthlyPackage={value.monthlyPackage}
+        yearlyPackage={value.yearlyPackage}
+        onClose={value.handlePaywallClose}
+        onPurchase={value.purchase}
+        onRestore={value.restore}
+      />
+    </Context.Provider>
+  );
 }
 
 export function useSubscription() {

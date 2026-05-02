@@ -241,7 +241,11 @@ function AnalyticsSync() {
 
 function RevenueCatUserSync({ children }: { children: ReactNode }) {
   const { user } = useUser();
-  return <SubscriptionProvider userId={user?.id ?? null}>{children}</SubscriptionProvider>;
+  return (
+    <SubscriptionProvider userId={user?.id ?? null} userEmail={user?.email ?? null}>
+      {children}
+    </SubscriptionProvider>
+  );
 }
 
 function PushTokenSync() {

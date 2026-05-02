@@ -36,9 +36,63 @@ import {
 } from 'lucide-react-native';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useAchievements } from '@/providers/AchievementProvider';
+import { useTrips } from '@/providers/TripProvider';
 import { ACHIEVEMENT_CATEGORIES } from '@/constants/achievements';
 import { AchievementProgress, AchievementCategory } from '@/types/achievement';
 import { ThemeColors } from '@/constants/colors';
+import { TripStats } from '@/types/trip';
+
+function computeLiveProgress(
+  achievementId: string,
+  trips: TripStats[],
+  currentStreak: number,
+): number {
+  if (!trips || trips.length === 0) {
+    if (achievementId.startsWith('streak_')) return currentStreak;
+    return 0;
+  }
+  switch (achievementId) {
+    case 'speed_100':
+      return Math.max(0, ...trips.map(t => t.topSpeed ?? 0));
+    case 'distance_first':
+      return trips.length >= 1 ? 1 : 0;
+    case 'distance_100':
+    case 'distance_1000':
+    case 'distance_10000':
+      return trips.reduce((sum, t) => sum + (t.distance ?? 0), 0);
+    case 'distance_single_200':
+      return Math.max(0, ...trips.map(t => t.distance ?? 0));
+    case 'trips_5':
+    case 'trips_25':
+    case 'trips_100':
+    case 'trips_500':
+      return trips.length;
+    case 'streak_3':
+    case 'streak_7':
+    case 'streak_30':
+      return currentStreak;
+    case 'perf_gforce':
+      return Math.max(0, ...trips.map(t => t.maxGForce ?? 0));
+    case 'perf_corners_50':
+    case 'perf_corners_100':
+      return Math.max(0, ...trips.map(t => t.corners ?? 0));
+    case 'perf_quick_launch': {
+      const valid = trips.map(t => t.time0to100 ?? 0).filter(v => v > 0);
+      if (valid.length === 0) return 0;
+      const best = Math.min(...valid);
+      return best < 6 ? best : 6;
+    }
+    case 'perf_night_owl':
+      return trips.some(t => {
+        const h = new Date(t.endTime ?? 0).getHours();
+        return h >= 0 && h < 5;
+      }) ? 1 : 0;
+    case 'perf_marathon':
+      return Math.max(0, ...trips.map(t => t.duration ?? 0));
+    default:
+      return 0;
+  }
+}
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -569,7 +623,16 @@ export default function AchievementsScreen() {
     }
   }, [pendingCongrats, clearPendingCongrats]);
 
-  const achievements = useMemo(() => getAchievementProgress(), [getAchievementProgress]);
+  const { trips } = useTrips();
+  const achievements = useMemo(() => {
+    const base = getAchievementProgress();
+    return base.map(item => {
+      if (item.isUnlocked) return item;
+      const liveProgress = computeLiveProgress(item.definition.id, trips, streak.currentStreak);
+      const cappedProgress = Math.min(liveProgress, item.definition.threshold);
+      return { ...item, progress: cappedProgress };
+    });
+  }, [getAchievementProgress, trips, streak.currentStreak]);
 
   const groupedAchievements = useMemo(() => {
     const groups: Record<string, AchievementProgress[]> = {};
