@@ -3,7 +3,7 @@
     "name": "RedLine",
     "slug": "redline",
     "owner": "tonix_o",
-    "version": "1.5.9",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "redline",
@@ -16,8 +16,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.rork.redline",
-      "buildNumber": "2",
+      "bundleIdentifier": "app.rork.redline-app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
         "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
@@ -38,7 +38,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.redline",
+      "package": "app.rork.redline-app",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
