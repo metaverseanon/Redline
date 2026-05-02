@@ -12,6 +12,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Stack, router } from 'expo-router';
 import { User, Car, ChevronDown, ChevronRight, LogOut, Check, Navigation, Search, Camera, Plus, X, Image as ImageIcon, Eye, EyeOff, CirclePlus } from 'lucide-react-native';
 import * as Location from 'expo-location';
@@ -846,9 +847,12 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.avatarContainer} onPress={pickProfilePicture}>
           <View style={styles.avatarRing}>
             {isValidImageUri(profilePicture) && !profilePicLoadFailed ? (
-              <Image 
+              <ExpoImage 
                 source={{ uri: profilePicture }} 
                 style={styles.avatarImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={150}
                 onError={() => {
                   console.log('[PROFILE] Profile picture failed to load:', profilePicture);
                   setProfilePicLoadFailed(true);
@@ -1310,9 +1314,12 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.avatarContainer} onPress={pickProfilePicture}>
             <View style={styles.avatarRing}>
               {isValidImageUri(profilePicture) && !profilePicLoadFailed ? (
-                <Image 
+                <ExpoImage 
                   source={{ uri: profilePicture }} 
                   style={styles.avatarImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={150}
                   onError={() => {
                     console.log('[PROFILE] Profile picture failed to load:', profilePicture);
                     setProfilePicLoadFailed(true);

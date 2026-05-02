@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import { Image as ExpoImage } from 'expo-image';
 import {
   View,
   Text,
@@ -835,7 +836,7 @@ export default function UserProfileScreen() {
         <View style={styles.profileHeader}>
           <View style={styles.avatarWrapper}>
             {profileUser.profilePicture ? (
-              <Image source={{ uri: profileUser.profilePicture }} style={styles.avatar} />
+              <ExpoImage source={{ uri: profileUser.profilePicture }} style={styles.avatar} contentFit="cover" cachePolicy="memory-disk" transition={150} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarInitial}>

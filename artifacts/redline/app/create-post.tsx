@@ -12,6 +12,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { ImagePlus, X, Send, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -180,9 +181,12 @@ export default function CreatePostScreen() {
           <View style={styles.userRow}>
             <View style={styles.avatar}>
               {user?.profilePicture && !avatarError ? (
-                <Image
+                <ExpoImage
                   source={{ uri: user.profilePicture }}
                   style={styles.avatarImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={150}
                   onError={() => {
                     console.log('[CREATE_POST] Avatar image failed to load:', user.profilePicture);
                     setAvatarError(true);

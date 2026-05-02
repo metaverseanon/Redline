@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Image, Platform, Alert, ActivityIndicator, Linking, Animated, RefreshControl } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trophy, Zap, Navigation, Gauge, ChevronDown, X, MapPin, Car, Filter, Activity, Route, Search, Clock, Calendar, CornerDownRight, ChevronRight, Timer, Users, Send, Bell, Check, XCircle, Share2, Navigation2, MessageCircle, AlertCircle, UserPlus, UserCheck } from 'lucide-react-native';
 import * as Location from 'expo-location';
@@ -1698,7 +1699,7 @@ export default function LeaderboardScreen() {
                     </Text>
                     <View style={styles.competitorAvatarWrap}>
                       {isValidAvatar(entry.userProfilePicture) ? (
-                        <Image source={{ uri: entry.userProfilePicture }} style={styles.competitorAvatar} onError={() => handleAvatarError(entry.userProfilePicture!)} />
+                        <ExpoImage source={{ uri: entry.userProfilePicture }} style={styles.competitorAvatar} contentFit="cover" cachePolicy="memory-disk" transition={150} onError={() => handleAvatarError(entry.userProfilePicture!)} />
                       ) : (
                         <View style={styles.competitorAvatarPlaceholder}>
                           <Text style={styles.competitorAvatarInitial}>
@@ -1768,7 +1769,7 @@ export default function LeaderboardScreen() {
                     <View style={styles.podiumAvatarWrap}>
                       <View style={[styles.podiumAvatarRing, { width: ringSize, height: ringSize, borderRadius: ringSize / 2, borderColor: ringColor }]}>
                         {isValidAvatar(pic) ? (
-                          <Image source={{ uri: pic }} style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }} onError={() => handleAvatarError(pic)} />
+                          <ExpoImage source={{ uri: pic }} style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }} contentFit="cover" cachePolicy="memory-disk" transition={150} onError={() => handleAvatarError(pic)} />
                         ) : (
                           <View style={[styles.podiumAvatarPlaceholder, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
                             <Text style={[styles.podiumAvatarInitial, isFirst && { fontSize: 28 }]}>
@@ -1893,7 +1894,7 @@ export default function LeaderboardScreen() {
                     disabled={!trip.userId}
                   >
                     {isValidAvatar(displayProfilePic) ? (
-                      <Image source={{ uri: displayProfilePic }} style={styles.competitorAvatar} onError={() => handleAvatarError(displayProfilePic)} />
+                      <ExpoImage source={{ uri: displayProfilePic }} style={styles.competitorAvatar} contentFit="cover" cachePolicy="memory-disk" transition={150} onError={() => handleAvatarError(displayProfilePic)} />
                     ) : (
                       <View style={styles.competitorAvatarPlaceholder}>
                         <Text style={styles.competitorAvatarInitial}>

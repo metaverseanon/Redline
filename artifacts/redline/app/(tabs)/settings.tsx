@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Linking, Image, Switch, Platform, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Share } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { router } from 'expo-router';
@@ -729,7 +730,7 @@ export default function SettingsScreen() {
             <View style={styles.profileContent}>
               <View style={styles.avatarContainer}>
                 {user?.profilePicture ? (
-                  <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />
+                  <ExpoImage source={{ uri: user.profilePicture }} style={styles.avatarImage} contentFit="cover" cachePolicy="memory-disk" transition={150} />
                 ) : (
                   <User size={24} color={colors.textInverted} />
                 )}

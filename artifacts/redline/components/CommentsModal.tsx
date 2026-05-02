@@ -13,6 +13,7 @@ import {
   Animated,
   Keyboard,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { X, Send, Trash2, MessageCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -122,7 +123,7 @@ function CommentsModal({ visible, onClose, postId, userId, colors }: CommentsMod
       <Animated.View style={styles.commentItem}>
         <View style={styles.commentAvatar}>
           {item.userProfilePicture ? (
-            <Image source={{ uri: item.userProfilePicture }} style={styles.commentAvatarImage} />
+            <ExpoImage source={{ uri: item.userProfilePicture }} style={styles.commentAvatarImage} contentFit="cover" cachePolicy="memory-disk" transition={150} />
           ) : (
             <Text style={styles.commentAvatarText}>{initial}</Text>
           )}

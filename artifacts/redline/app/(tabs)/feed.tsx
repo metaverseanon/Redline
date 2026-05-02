@@ -12,6 +12,7 @@ import {
   Image,
   Animated,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Navigation, Clock, MapPin, Search, X, UserPlus, Car, Zap, Users, Plus, Bell, Gauge, Compass, MessageCircle, AlertCircle, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -380,7 +381,7 @@ export default function FeedScreen() {
         <View style={styles.feedCardHeader}>
           <View style={styles.feedAvatar}>
             {item.userProfilePicture ? (
-              <Image source={{ uri: item.userProfilePicture }} style={styles.feedAvatarImage} />
+              <ExpoImage source={{ uri: item.userProfilePicture }} style={styles.feedAvatarImage} contentFit="cover" cachePolicy="memory-disk" transition={150} />
             ) : (
               <Text style={styles.feedAvatarText}>{initial}</Text>
             )}
@@ -489,7 +490,7 @@ export default function FeedScreen() {
         >
           <View style={styles.feedAvatar}>
             {item.userProfilePicture ? (
-              <Image source={{ uri: item.userProfilePicture }} style={styles.feedAvatarImage} />
+              <ExpoImage source={{ uri: item.userProfilePicture }} style={styles.feedAvatarImage} contentFit="cover" cachePolicy="memory-disk" transition={150} />
             ) : (
               <Text style={styles.feedAvatarText}>{initial}</Text>
             )}
