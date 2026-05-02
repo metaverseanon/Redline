@@ -76,12 +76,8 @@ function computeLiveProgress(
     case 'perf_corners_50':
     case 'perf_corners_100':
       return Math.max(0, ...trips.map(t => t.corners ?? 0));
-    case 'perf_quick_launch': {
-      const valid = trips.map(t => t.time0to100 ?? 0).filter(v => v > 0);
-      if (valid.length === 0) return 0;
-      const best = Math.min(...valid);
-      return best < 6 ? best : 6;
-    }
+    case 'perf_quick_launch':
+      return 0;
     case 'perf_night_owl':
       return trips.some(t => {
         const h = new Date(t.endTime ?? 0).getHours();

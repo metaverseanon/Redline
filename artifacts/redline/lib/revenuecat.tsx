@@ -225,7 +225,11 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
       }
 
       return new Promise<PaywallResult>((resolve) => {
+        const previous = paywallResolveRef.current;
         paywallResolveRef.current = resolve;
+        if (previous) {
+          previous("cancelled");
+        }
         setPaywallVisible(true);
       });
     },
