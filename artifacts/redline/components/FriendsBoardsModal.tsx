@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { X, Plus, Trash2, UserPlus, LogOut, Trophy, ChevronRight, Lock, Crown } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
@@ -192,7 +194,10 @@ export default function FriendsBoardsModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -412,7 +417,7 @@ export default function FriendsBoardsModal({
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       <Modal visible={showInvite} transparent animationType="fade" onRequestClose={() => setShowInvite(false)}>
         <Pressable style={styles.subOverlay} onPress={() => setShowInvite(false)}>

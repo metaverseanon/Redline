@@ -131,7 +131,15 @@ export default function TrackScreen() {
     clearLastSavedTrip();
   }, [clearLastSavedTrip]);
 
-  const isDark = colors.background === '#000000';
+  const isDark = (() => {
+    const hex = (colors.background ?? '#000000').replace('#', '');
+    if (hex.length < 6) return true;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5;
+  })();
 
   const getSpeedColor = useCallback((speed: number) => {
     const maxSpeed = 200;
