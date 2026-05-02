@@ -125,6 +125,7 @@ export default function LeaderboardScreen() {
   const [pingComposeFor, setPingComposeFor] = useState<{ id: string; name: string; car?: string } | null>(null);
   const [pingMessage, setPingMessage] = useState<string>('');
   const [showFriendsBoards, setShowFriendsBoards] = useState(false);
+  const [topTab, setTopTab] = useState<'leaderboard' | 'friends'>('leaderboard');
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('topSpeed');
   const [filters, setFilters] = useState<LeaderboardFilters>({});
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -1386,28 +1387,6 @@ export default function LeaderboardScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navHeader}>
         <Text style={styles.navTitle}>Leaderboard</Text>
-        <TouchableOpacity
-          style={styles.friendsBoardsBtn}
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            if (!user?.id) {
-              Alert.alert(
-                'Sign in required',
-                'You need to be signed in to use Friends Boards. Open the Settings tab to sign in.',
-              );
-              return;
-            }
-            setShowFriendsBoards(true);
-          }}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Trophy size={14} color={colors.accent} />
-          <Text style={styles.friendsBoardsBtnText}>FRIENDS</Text>
-          {!isSubscribed && <ProBadge size="sm" />}
-        </TouchableOpacity>
       </View>
 
       {pendingIncomingPings.length > 0 && (
@@ -1508,45 +1487,44 @@ export default function LeaderboardScreen() {
         </View>
       )}
 
-      {user?.id && (
+      <View style={styles.topTabSwitcher}>
         <TouchableOpacity
-          style={styles.privateBoardsCta}
+          style={[styles.topTabButton, topTab === 'leaderboard' && styles.topTabButtonActive]}
           onPress={() => {
             if (Platform.OS !== 'web') {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
-            setShowFriendsBoards(true);
+            setTopTab('leaderboard');
           }}
-          activeOpacity={0.85}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          activeOpacity={0.8}
         >
-          <View style={styles.privateBoardsCtaIcon}>
-            <Trophy size={18} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.privateBoardsCtaTitleRow}>
-              <Text style={styles.privateBoardsCtaTitle}>Private Boards</Text>
-              {!isSubscribed && <ProBadge size="sm" />}
-            </View>
-            <Text style={styles.privateBoardsCtaSubtitle} numberOfLines={1}>
-              {isSubscribed
-                ? 'Create a board, invite friends, compete privately'
-                : 'Create private leaderboards with friends'}
-            </Text>
-          </View>
-          <ChevronRight size={18} color={colors.textLight} />
+          <Trophy size={14} color={topTab === 'leaderboard' ? colors.textInverted : colors.text} />
+          <Text style={[styles.topTabText, topTab === 'leaderboard' && styles.topTabTextActive]}>
+            Leaderboard
+          </Text>
         </TouchableOpacity>
-      )}
+        <TouchableOpacity
+          style={[styles.topTabButton, topTab === 'friends' && styles.topTabButtonActive]}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            setTopTab('friends');
+          }}
+          activeOpacity={0.8}
+        >
+          <Users size={14} color={topTab === 'friends' ? colors.textInverted : colors.text} />
+          <Text style={[styles.topTabText, topTab === 'friends' && styles.topTabTextActive]}>
+            Friends
+          </Text>
+          {!isSubscribed && (
+            <View style={styles.topTabProDot} />
+          )}
+        </TouchableOpacity>
+      </View>
 
-      {user?.id && (
-        <CommunityCard
-          userId={user.id}
-          isSubscribed={isSubscribed}
-          presentPaywall={presentPaywall}
-          getLastPaywallError={getLastPaywallError}
-        />
-      )}
-
+      {topTab === 'leaderboard' && (
+      <>
       <View style={styles.filtersContainer}>
         <Text style={styles.sectionLabel}>Choose Category</Text>
         <TouchableOpacity
@@ -1970,6 +1948,88 @@ export default function LeaderboardScreen() {
           </View>
         )}
       </ScrollView>
+      </>
+      )}
+
+      {topTab === 'friends' && (
+        <ScrollView
+          style={styles.friendsScroll}
+          contentContainerStyle={styles.friendsContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isManualRefreshing}
+              onRefresh={handleManualRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              progressBackgroundColor={colors.cardBackground}
+            />
+          }
+        >
+          {!user?.id ? (
+            <View style={styles.friendsSignInCard}>
+              <View style={styles.friendsSignInIcon}>
+                <Trophy size={32} color={colors.accent} />
+              </View>
+              <Text style={styles.friendsSignInTitle}>Sign in to use Friends</Text>
+              <Text style={styles.friendsSignInSubtitle}>
+                Create private leaderboards and join your car's community. Open the Settings tab to sign in.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.friendsHeroCard}
+                activeOpacity={0.9}
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  setShowFriendsBoards(true);
+                }}
+              >
+                <View style={styles.friendsHeroBadgeRow}>
+                  <View style={styles.friendsHeroIcon}>
+                    <Trophy size={22} color={colors.accent} />
+                  </View>
+                  {!isSubscribed && <ProBadge size="sm" />}
+                </View>
+                <Text style={styles.friendsHeroTitle}>Friends Boards</Text>
+                <Text style={styles.friendsHeroSubtitle}>
+                  Create private leaderboards and compete only with your friends.
+                </Text>
+                <View style={styles.friendsHeroBullets}>
+                  <View style={styles.friendsHeroBullet}>
+                    <Check size={14} color={colors.accent} />
+                    <Text style={styles.friendsHeroBulletText}>Custom boards by car or category</Text>
+                  </View>
+                  <View style={styles.friendsHeroBullet}>
+                    <Check size={14} color={colors.accent} />
+                    <Text style={styles.friendsHeroBulletText}>Invite friends — they don't need Pro</Text>
+                  </View>
+                  <View style={styles.friendsHeroBullet}>
+                    <Check size={14} color={colors.accent} />
+                    <Text style={styles.friendsHeroBulletText}>Track personal bests vs friends</Text>
+                  </View>
+                </View>
+                <View style={styles.friendsHeroCta}>
+                  <Text style={styles.friendsHeroCtaText}>Open Friends Boards</Text>
+                  <ChevronRight size={16} color={colors.textInverted} />
+                </View>
+              </TouchableOpacity>
+
+              <Text style={styles.friendsSectionLabel}>YOUR COMMUNITY</Text>
+              <CommunityCard
+                userId={user.id}
+                isSubscribed={isSubscribed}
+                presentPaywall={presentPaywall}
+                getLastPaywallError={getLastPaywallError}
+                defaultExpanded
+              />
+            </>
+          )}
+        </ScrollView>
+      )}
 
       <Modal
         visible={showFilterModal}
@@ -2985,6 +3045,166 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: 'Orbitron_700Bold',
     color: colors.text,
     letterSpacing: 1,
+  },
+  topTabSwitcher: {
+    flexDirection: 'row' as const,
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    padding: 4,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  topTabButton: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 9,
+    backgroundColor: 'transparent',
+  },
+  topTabButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  topTabText: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.text,
+    letterSpacing: 0.5,
+  },
+  topTabTextActive: {
+    color: colors.textInverted,
+  },
+  topTabProDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    marginLeft: 2,
+  },
+  friendsScroll: {
+    flex: 1,
+  },
+  friendsContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 32,
+    gap: 16,
+  },
+  friendsSignInCard: {
+    alignItems: 'center' as const,
+    padding: 24,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 24,
+  },
+  friendsSignInIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.background,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  friendsSignInTitle: {
+    fontSize: 16,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    marginBottom: 6,
+    textAlign: 'center' as const,
+  },
+  friendsSignInSubtitle: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    textAlign: 'center' as const,
+    lineHeight: 18,
+  },
+  friendsHeroCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    padding: 18,
+  },
+  friendsHeroBadgeRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    marginBottom: 12,
+  },
+  friendsHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.background,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  friendsHeroTitle: {
+    fontSize: 18,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  friendsHeroSubtitle: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  friendsHeroBullets: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  friendsHeroBullet: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  friendsHeroBulletText: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.text,
+    flex: 1,
+  },
+  friendsHeroCta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  friendsHeroCtaText: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.textInverted,
+    letterSpacing: 0.5,
+  },
+  friendsSectionLabel: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.textLight,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.8,
+    marginTop: 4,
+    marginBottom: -8,
   },
   podiumContainer: {
     paddingTop: 8,
