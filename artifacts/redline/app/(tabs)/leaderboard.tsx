@@ -1383,6 +1383,44 @@ export default function LeaderboardScreen() {
     return null;
   }, [userPrimaryCar, user?.id]);
 
+  const topTabsView = (
+    <View style={styles.topTabSwitcher}>
+      <TouchableOpacity
+        style={[styles.topTabButton, topTab === 'leaderboard' && styles.topTabButtonActive]}
+        onPress={() => {
+          if (Platform.OS !== 'web') {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+          setTopTab('leaderboard');
+        }}
+        activeOpacity={0.8}
+      >
+        <Trophy size={14} color={topTab === 'leaderboard' ? colors.textInverted : colors.text} />
+        <Text style={[styles.topTabText, topTab === 'leaderboard' && styles.topTabTextActive]}>
+          Leaderboard
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.topTabButton, topTab === 'friends' && styles.topTabButtonActive]}
+        onPress={() => {
+          if (Platform.OS !== 'web') {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+          setTopTab('friends');
+        }}
+        activeOpacity={0.8}
+      >
+        <Users size={14} color={topTab === 'friends' ? colors.textInverted : colors.text} />
+        <Text style={[styles.topTabText, topTab === 'friends' && styles.topTabTextActive]}>
+          Friends
+        </Text>
+        {!isSubscribed && (
+          <View style={styles.topTabProDot} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navHeader}>
@@ -1487,44 +1525,22 @@ export default function LeaderboardScreen() {
         </View>
       )}
 
-      <View style={styles.topTabSwitcher}>
-        <TouchableOpacity
-          style={[styles.topTabButton, topTab === 'leaderboard' && styles.topTabButtonActive]}
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            setTopTab('leaderboard');
-          }}
-          activeOpacity={0.8}
-        >
-          <Trophy size={14} color={topTab === 'leaderboard' ? colors.textInverted : colors.text} />
-          <Text style={[styles.topTabText, topTab === 'leaderboard' && styles.topTabTextActive]}>
-            Leaderboard
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.topTabButton, topTab === 'friends' && styles.topTabButtonActive]}
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            setTopTab('friends');
-          }}
-          activeOpacity={0.8}
-        >
-          <Users size={14} color={topTab === 'friends' ? colors.textInverted : colors.text} />
-          <Text style={[styles.topTabText, topTab === 'friends' && styles.topTabTextActive]}>
-            Friends
-          </Text>
-          {!isSubscribed && (
-            <View style={styles.topTabProDot} />
-          )}
-        </TouchableOpacity>
-      </View>
-
       {topTab === 'leaderboard' && (
       <>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isManualRefreshing}
+            onRefresh={handleManualRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.cardBackground}
+          />
+        }
+      >
+      {topTabsView}
       <View style={styles.filtersContainer}>
         <Text style={styles.sectionLabel}>Choose Category</Text>
         <TouchableOpacity
@@ -1622,19 +1638,6 @@ export default function LeaderboardScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isManualRefreshing}
-            onRefresh={handleManualRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-            progressBackgroundColor={colors.cardBackground}
-          />
-        }
-      >
         {activeQuery.isError && (
           <TouchableOpacity
             style={styles.errorBanner}
@@ -1966,6 +1969,7 @@ export default function LeaderboardScreen() {
             />
           }
         >
+          {topTabsView}
           {!user?.id ? (
             <View style={styles.friendsSignInCard}>
               <View style={styles.friendsSignInIcon}>
