@@ -172,15 +172,47 @@ function useSubscriptionContext(userId?: string | null) {
     },
   });
 
+  const lastPaywallErrorRef = React.useRef<string | null>(null);
+
   const presentPaywall = useCallback(
     async (options?: { offering?: any; requiredEntitlementIdentifier?: string }): Promise<"purchased" | "restored" | "cancelled" | "error" | "not_presented"> => {
-      if (Platform.OS === "web" || !PurchasesUIModule) {
-        console.warn("[RC] Paywall UI unavailable on this platform");
+      lastPaywallErrorRef.current = null;
+      if (Platform.OS === "web") {
+        lastPaywallErrorRef.current = "Web platform — paywall unavailable.";
+        console.warn("[RC] Paywall UI unavailable on web");
         return "not_presented";
       }
+      if (!PurchasesUIModule) {
+        lastPaywallErrorRef.current = "react-native-purchases-ui module not loaded in this build.";
+        console.warn("[RC] PurchasesUIModule not loaded");
+        return "not_presented";
+      }
+      if (!isConfigured) {
+        lastPaywallErrorRef.current =
+          "RevenueCat SDK is not configured. The RevenueCat API key is missing from this build. Ask the developer to set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS environment and rebuild.";
+        console.warn("[RC] presentPaywall called before SDK configured");
+        return "error";
+      }
       try {
-        const offering = options?.offering ?? offeringsQuery.data?.current;
+        let offering = options?.offering ?? offeringsQuery.data?.current;
         if (!offering) {
+          console.warn("[RC] No current offering cached; refetching offerings before giving up");
+          try {
+            const fresh = await PurchasesModule.getOfferings();
+            offering = fresh?.current ?? null;
+            if (offering) {
+              queryClient.setQueryData(["revenuecat", "offerings"], fresh);
+            }
+          } catch (refetchErr) {
+            console.error("[RC] getOfferings refetch failed:", refetchErr);
+            lastPaywallErrorRef.current =
+              "Could not load subscription offerings from RevenueCat. Check internet connection and that the RevenueCat API key is valid for this app.";
+            return "error";
+          }
+        }
+        if (!offering) {
+          lastPaywallErrorRef.current =
+            "No current offering is configured in RevenueCat. Ask the developer to set a Current Offering in the RevenueCat dashboard for the iOS app.";
           console.warn("[RC] No current offering available to present");
           return "error";
         }
@@ -211,13 +243,17 @@ function useSubscriptionContext(userId?: string | null) {
           default:
             return "error";
         }
-      } catch (err) {
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        lastPaywallErrorRef.current = `Paywall failed to open: ${msg}`;
         console.error("[RC] presentPaywall failed:", err);
         return "error";
       }
     },
     [offeringsQuery.data, queryClient]
   );
+
+  const getLastPaywallError = useCallback(() => lastPaywallErrorRef.current, []);
 
   const presentCustomerCenter = useCallback(async (): Promise<boolean> => {
     if (Platform.OS === "web" || !PurchasesUIModule?.presentCustomerCenter) {
@@ -260,6 +296,7 @@ function useSubscriptionContext(userId?: string | null) {
     isRestoring: restoreMutation.isPending,
     presentPaywall,
     presentCustomerCenter,
+    getLastPaywallError,
     refetchCustomerInfo: customerInfoQuery.refetch,
   };
 }

@@ -71,7 +71,25 @@ interface PeriodStats {
 export default function RecapScreen() {
   const { trips } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationShortLabel, colors } = useSettings();
-  const { isSubscribed, presentPaywall } = useSubscription();
+  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
+
+  const handleProUpgradePress = useCallback(async () => {
+    try {
+      const result = await presentPaywall();
+      if (result === 'not_presented' || result === 'error') {
+        const reason = getLastPaywallError?.();
+        Alert.alert(
+          'Pro Telemetry',
+          reason ?? 'The upgrade screen could not be opened right now. Please try again in a moment, or check your connection.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert(
+        'Pro Telemetry',
+        `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`,
+      );
+    }
+  }, [presentPaywall, getLastPaywallError]);
   const [viewMode, setViewMode] = useState<ViewMode>('recent');
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('weekly');
   const [showWeeklyRecap, setShowWeeklyRecap] = useState<boolean>(false);
