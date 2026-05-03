@@ -1,112 +1,135 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  Dimensions,
   TouchableOpacity,
   Animated,
   Platform,
+  ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { MessageSquare, Award, Target, Flame, Sparkles, ChevronRight, X } from 'lucide-react-native';
+import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp } from 'lucide-react-native';
+import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-export const CURRENT_APP_VERSION = '1.5.0';
+export const CURRENT_APP_VERSION = '1.9.8';
 
-interface Feature {
+interface FeaturePage {
   id: string;
   icon: React.ReactNode;
-  accentIcon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  description: string;
+  decorIcon: React.ReactNode;
   tag: string;
+  title: string;
+  highlight: string;
+  description: string;
 }
 
-const features: Feature[] = [
+const features: FeaturePage[] = [
   {
-    id: 'feed',
-    icon: <MessageSquare size={36} color="#FFFFFF" strokeWidth={1.5} />,
-    accentIcon: <Flame size={16} color="#FF6B35" />,
-    title: 'Community Feed',
-    subtitle: 'Share your drives',
-    description: 'Post your best runs, share highlights with photos, and see what other drivers are up to. React and engage with the community.',
-    tag: 'SOCIAL',
+    id: 'leave-notif',
+    icon: <Bell size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Bell size={20} color="#CC0000" />,
+    tag: 'FRIENDS BOARDS',
+    title: 'Leave',
+    highlight: 'Alerts',
+    description: 'Own a private leaderboard? Get a push the moment any member joins or leaves your board — no more guessing who quit.',
   },
   {
-    id: 'challenges',
-    icon: <Award size={36} color="#FFFFFF" strokeWidth={1.5} />,
-    accentIcon: <Target size={16} color="#CC0000" />,
-    title: 'Challenges & Badges',
-    subtitle: 'Prove your skills',
-    description: 'Take on speed, distance, and streak challenges. Earn bronze, silver, gold, and platinum badges as you complete milestones.',
-    tag: 'COMPETE',
+    id: 'share-invite',
+    icon: <Share2 size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Share2 size={20} color="#CC0000" />,
+    tag: 'INVITES',
+    title: 'Share In',
+    highlight: 'Two Taps',
+    description: 'Send a board invite through Messages, WhatsApp, Mail or anywhere with the native iOS share sheet. Friends join instantly.',
+  },
+  {
+    id: 'custom-challenges',
+    icon: <Flag size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Flag size={20} color="#CC0000" />,
+    tag: 'CHALLENGES',
+    title: 'Custom',
+    highlight: 'Challenges',
+    description: 'Owners can set a goal, target and timer for the whole board. Members get a push and a live banner with progress + countdown.',
+  },
+  {
+    id: 'rank-up',
+    icon: <TrendingUp size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Trophy size={20} color="#CC0000" />,
+    tag: 'CELEBRATIONS',
+    title: 'Rank Up',
+    highlight: 'Confetti',
+    description: 'Climb the leaderboard and the app erupts with confetti, haptics and a shiny new-rank card. Every win deserves a moment.',
   },
 ];
 
 export default function WhatsNewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentPage, setCurrentPage] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const headerSlide = useRef(new Animated.Value(-20)).current;
-  const card1Anim = useRef(new Animated.Value(60)).current;
-  const card1Opacity = useRef(new Animated.Value(0)).current;
-  const card2Anim = useRef(new Animated.Value(60)).current;
-  const card2Opacity = useRef(new Animated.Value(0)).current;
-  const buttonAnim = useRef(new Animated.Value(40)).current;
-  const buttonOpacity = useRef(new Animated.Value(0)).current;
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+  const iconRotate = useRef(new Animated.Value(0)).current;
   const badgePulse = useRef(new Animated.Value(1)).current;
 
+  const TOTAL_PAGES = features.length + 1;
+  const PAYWALL_INDEX = features.length;
+
   useEffect(() => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(headerSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]),
-      Animated.stagger(150, [
-        Animated.parallel([
-          Animated.spring(card1Anim, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
-          Animated.timing(card1Opacity, { toValue: 1, duration: 350, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.spring(card2Anim, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
-          Animated.timing(card2Opacity, { toValue: 1, duration: 350, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.spring(buttonAnim, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
-          Animated.timing(buttonOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        ]),
-      ]),
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start();
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
-        Animated.timing(shimmerAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
-      ])
+        Animated.timing(pulseAnim, { toValue: 0.6, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 1500, useNativeDriver: true }),
+      ]),
     ).start();
 
     Animated.loop(
       Animated.sequence([
         Animated.timing(badgePulse, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
         Animated.timing(badgePulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-      ])
+      ]),
     ).start();
-  }, [fadeAnim, headerSlide, card1Anim, card1Opacity, card2Anim, card2Opacity, buttonAnim, buttonOpacity, shimmerAnim, badgePulse]);
+  }, [fadeAnim, slideAnim, pulseAnim, badgePulse]);
 
-  const dismiss = async () => {
-    if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+  useEffect(() => {
+    iconRotate.setValue(0);
+    Animated.spring(iconRotate, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  }, [currentPage, iconRotate]);
+
+  const markSeen = async () => {
     try {
       await AsyncStorage.setItem(WHATS_NEW_VERSION_KEY, CURRENT_APP_VERSION);
     } catch (e) {
       console.warn('[WHATS_NEW] Failed to save seen version:', e);
     }
+  };
+
+  const dismiss = async () => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    await markSeen();
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 250,
@@ -116,91 +139,161 @@ export default function WhatsNewScreen() {
     });
   };
 
-  const shimmerOpacity = shimmerAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.15, 0.35, 0.15],
-  });
+  const skipTop = async () => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    await dismiss();
+  };
 
-  const cardAnims = [
-    { translateY: card1Anim, opacity: card1Opacity },
-    { translateY: card2Anim, opacity: card2Opacity },
-  ];
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const page = Math.round(offsetX / SCREEN_WIDTH);
+    if (page !== currentPage && page >= 0 && page < TOTAL_PAGES) {
+      setCurrentPage(page);
+      if (Platform.OS !== 'web') {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    }
+  };
+
+  const goToNext = () => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    if (currentPage < TOTAL_PAGES - 1) {
+      const nextPage = currentPage + 1;
+      scrollViewRef.current?.scrollTo({ x: nextPage * SCREEN_WIDTH, animated: true });
+      setCurrentPage(nextPage);
+    } else {
+      void dismiss();
+    }
+  };
+
+  const handleBtnIn = () => {
+    Animated.spring(buttonScale, { toValue: 0.95, tension: 300, friction: 10, useNativeDriver: true }).start();
+  };
+  const handleBtnOut = () => {
+    Animated.spring(buttonScale, { toValue: 1, tension: 300, friction: 10, useNativeDriver: true }).start();
+  };
+
+  const isPaywallPage = currentPage === PAYWALL_INDEX;
+  const isLastFeaturePage = currentPage === features.length - 1;
+
+  const iconSpin = iconRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <View style={styles.bgAccent}>
-        <Animated.View style={[styles.bgGlow, { opacity: shimmerOpacity }]} />
-      </View>
-
-      <View style={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={dismiss}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          testID="whats-new-close"
-        >
-          <X size={20} color="#8E8E93" />
-        </TouchableOpacity>
-
-        <Animated.View style={[styles.header, { transform: [{ translateY: headerSlide }] }]}>
+      {!isPaywallPage && (
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <View style={styles.versionBadge}>
             <Animated.View style={{ transform: [{ scale: badgePulse }] }}>
-              <Sparkles size={14} color="#CC0000" />
+              <Sparkles size={12} color="#CC0000" />
             </Animated.View>
             <Text style={styles.versionText}>NEW IN v{CURRENT_APP_VERSION}</Text>
           </View>
-          <Text style={styles.headerTitle}>What's New</Text>
-          <Text style={styles.headerSubtitle}>
-            Fresh features to level up your driving experience
-          </Text>
-        </Animated.View>
-
-        <View style={styles.cardsContainer}>
-          {features.map((feature, index) => (
-            <Animated.View
-              key={feature.id}
-              style={[
-                styles.featureCard,
-                {
-                  opacity: cardAnims[index].opacity,
-                  transform: [{ translateY: cardAnims[index].translateY }],
-                },
-              ]}
-            >
-              <View style={styles.cardInner}>
-                <View style={styles.cardLeft}>
-                  <View style={styles.featureIconWrap}>
-                    <View style={styles.featureIconBg} />
-                    {feature.icon}
-                  </View>
-                </View>
-                <View style={styles.cardRight}>
-                  <View style={styles.tagRow}>
-                    {feature.accentIcon}
-                    <Text style={styles.tagText}>{feature.tag}</Text>
-                  </View>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureSubtitle}>{feature.subtitle}</Text>
-                  <Text style={styles.featureDescription}>{feature.description}</Text>
-                </View>
-              </View>
-              <View style={styles.cardEdge} />
-            </Animated.View>
-          ))}
-        </View>
-
-        <Animated.View style={[styles.bottomArea, { opacity: buttonOpacity, transform: [{ translateY: buttonAnim }] }]}>
           <TouchableOpacity
-            style={styles.continueButton}
-            onPress={dismiss}
-            activeOpacity={0.85}
-            testID="whats-new-continue"
+            onPress={skipTop}
+            style={styles.closeButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            testID="whats-new-close"
           >
-            <Text style={styles.continueText}>Let's Go</Text>
-            <ChevronRight size={18} color="#FFFFFF" />
+            <X size={18} color="#8E8E93" />
           </TouchableOpacity>
-        </Animated.View>
-      </View>
+        </View>
+      )}
+
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScroll}
+        scrollEventThrottle={16}
+        bounces={false}
+        testID="whats-new-scroll"
+      >
+        {features.map((page, index) => (
+          <View key={page.id} style={styles.page}>
+            <View style={styles.pageContent}>
+              <View style={styles.tagPill}>
+                <Text style={styles.tagText}>{page.tag}</Text>
+              </View>
+
+              <Animated.View
+                style={[
+                  styles.iconContainer,
+                  currentPage === index ? { transform: [{ rotate: iconSpin }] } : {},
+                ]}
+              >
+                <View style={styles.iconGlow} />
+                {page.icon}
+              </Animated.View>
+
+              <View style={styles.decorRow}>
+                {page.decorIcon}
+                <View style={styles.decorLine} />
+                {page.decorIcon}
+              </View>
+
+              <Animated.View
+                style={[
+                  styles.textContainer,
+                  { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+                ]}
+              >
+                <Text style={styles.title}>{page.title}</Text>
+                <Text style={styles.highlight}>{page.highlight}</Text>
+                <Text style={styles.description}>{page.description}</Text>
+              </Animated.View>
+            </View>
+          </View>
+        ))}
+
+        <OnboardPaywallPage
+          width={SCREEN_WIDTH}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          onContinue={() => void dismiss()}
+          ctaLabel={undefined}
+          skipLabel="Maybe later"
+        />
+      </ScrollView>
+
+      {!isPaywallPage && (
+        <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.pagination}>
+            {Array.from({ length: TOTAL_PAGES }).map((_, index) => (
+              <Animated.View
+                key={index}
+                style={[
+                  styles.dot,
+                  currentPage === index ? styles.dotActive : { opacity: pulseAnim },
+                ]}
+              />
+            ))}
+          </View>
+
+          <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
+            <TouchableOpacity
+              onPress={goToNext}
+              onPressIn={handleBtnIn}
+              onPressOut={handleBtnOut}
+              style={[styles.nextButton, isLastFeaturePage && styles.nextButtonFinal]}
+              activeOpacity={0.9}
+              testID="whats-new-next"
+            >
+              <Text style={styles.nextButtonText}>
+                {isLastFeaturePage ? 'See Pro' : 'Continue'}
+              </Text>
+              <ChevronRight size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      )}
     </Animated.View>
   );
 }
@@ -210,153 +303,148 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  bgAccent: {
+  topBar: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
     position: 'absolute' as const,
     top: 0,
     left: 0,
     right: 0,
-    height: 300,
-    overflow: 'hidden',
-  },
-  bgGlow: {
-    position: 'absolute' as const,
-    top: -80,
-    left: -40,
-    right: -40,
-    height: 300,
-    borderRadius: 200,
-    backgroundColor: '#CC0000',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  closeButton: {
-    alignSelf: 'flex-end' as const,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginBottom: 8,
-  },
-  header: {
-    alignItems: 'center' as const,
-    marginBottom: 32,
+    zIndex: 10,
   },
   versionBadge: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 6,
+    gap: 5,
     backgroundColor: 'rgba(204, 0, 0, 0.15)',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(204, 0, 0, 0.3)',
-    marginBottom: 20,
   },
   versionText: {
     color: '#CC0000',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700' as const,
+    letterSpacing: 1.2,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  page: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  pageContent: {
+    alignItems: 'center' as const,
+    paddingHorizontal: 32,
+    marginTop: -40,
+  },
+  tagPill: {
+    backgroundColor: 'rgba(204,0,0,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,0,0,0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  tagText: {
+    color: '#CC0000',
+    fontSize: 10,
+    fontWeight: '800' as const,
     letterSpacing: 1.5,
   },
-  headerTitle: {
-    fontSize: 38,
+  iconContainer: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(204, 0, 0, 0.12)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(204, 0, 0, 0.3)',
+  },
+  iconGlow: {
+    position: 'absolute' as const,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(204, 0, 0, 0.06)',
+  },
+  decorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: 28,
+    gap: 12,
+  },
+  decorLine: {
+    width: 40,
+    height: 1,
+    backgroundColor: 'rgba(204, 0, 0, 0.4)',
+  },
+  textContainer: {
+    alignItems: 'center' as const,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '300' as const,
+    color: '#8E8E93',
+    textAlign: 'center' as const,
+    letterSpacing: 1,
+    textTransform: 'uppercase' as const,
+  },
+  highlight: {
+    fontSize: 42,
     fontWeight: '800' as const,
     color: '#FFFFFF',
     textAlign: 'center' as const,
+    marginTop: 4,
+    marginBottom: 20,
     letterSpacing: -0.5,
-    marginBottom: 8,
   },
-  headerSubtitle: {
+  description: {
     fontSize: 15,
     color: '#8E8E93',
     textAlign: 'center' as const,
     lineHeight: 22,
-    maxWidth: 280,
+    maxWidth: 320,
   },
-  cardsContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    gap: 16,
-  },
-  featureCard: {
-    backgroundColor: '#111111',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  cardInner: {
-    flexDirection: 'row' as const,
-    padding: 20,
-    gap: 16,
-  },
-  cardLeft: {
-    justifyContent: 'flex-start' as const,
-    paddingTop: 4,
-  },
-  featureIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: 'rgba(204, 0, 0, 0.12)',
-    justifyContent: 'center' as const,
+  bottomSection: {
+    paddingHorizontal: 24,
     alignItems: 'center' as const,
-    borderWidth: 1,
-    borderColor: 'rgba(204, 0, 0, 0.25)',
+    gap: 24,
   },
-  featureIconBg: {
-    position: 'absolute' as const,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(204, 0, 0, 0.04)',
-  },
-  cardRight: {
-    flex: 1,
-  },
-  tagRow: {
+  pagination: {
     flexDirection: 'row' as const,
+    gap: 10,
     alignItems: 'center' as const,
-    gap: 5,
-    marginBottom: 6,
   },
-  tagText: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    color: '#8E8E93',
-    letterSpacing: 1.2,
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3A3A3C',
   },
-  featureTitle: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  featureSubtitle: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    color: '#CC0000',
-    marginBottom: 8,
-  },
-  featureDescription: {
-    fontSize: 13,
-    color: '#8E8E93',
-    lineHeight: 19,
-  },
-  cardEdge: {
-    height: 3,
+  dotActive: {
+    width: 28,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#CC0000',
-    opacity: 0.6,
   },
-  bottomArea: {
-    paddingTop: 16,
-  },
-  continueButton: {
+  nextButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
@@ -364,13 +452,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
     gap: 8,
+    width: '100%' as any,
+  },
+  nextButtonFinal: {
+    backgroundColor: '#CC0000',
     shadowColor: '#CC0000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
-  continueText: {
+  nextButtonText: {
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '700' as const,

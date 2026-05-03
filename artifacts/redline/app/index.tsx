@@ -6,7 +6,7 @@ import * as Notifications from 'expo-notifications';
 
 const ONBOARDING_KEY = 'onboarding_completed';
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-const CURRENT_APP_VERSION = '1.5.0';
+const CURRENT_APP_VERSION = '1.9.8';
 const _BUILD_TIMESTAMP = '20260329';
 
 export default function WelcomeScreen() {

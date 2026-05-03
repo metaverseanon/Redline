@@ -15,7 +15,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye } from 'lucide-react-native';
+import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye, Bell, Share2, Flag, TrendingUp } from 'lucide-react-native';
+import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ONBOARDING_KEY = 'onboarding_completed';
@@ -86,6 +87,42 @@ const pages: OnboardingPage[] = [
     gradient: ['#0d0000', '#000000'],
   },
   {
+    id: 'friends-boards',
+    icon: <Bell size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Bell size={20} color="#CC0000" />,
+    title: 'Friends Board',
+    highlight: 'Alerts',
+    description: 'Create private leaderboards with friends and get a push the moment anyone joins or leaves your board.',
+    gradient: ['#0a0010', '#000000'],
+  },
+  {
+    id: 'share-invite',
+    icon: <Share2 size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Share2 size={20} color="#CC0000" />,
+    title: 'Invite Anyone',
+    highlight: 'In Two Taps',
+    description: 'Share private boards through Messages, WhatsApp, Mail or anywhere with the native iOS share sheet.',
+    gradient: ['#001010', '#000000'],
+  },
+  {
+    id: 'custom-challenges',
+    icon: <Flag size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Flag size={20} color="#CC0000" />,
+    title: 'Set Custom',
+    highlight: 'Challenges',
+    description: 'Pick a goal — top speed, distance, drives or G-force — set the target and timer, and race your crew to the finish.',
+    gradient: ['#100a00', '#000000'],
+  },
+  {
+    id: 'rank-up',
+    icon: <TrendingUp size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Trophy size={20} color="#CC0000" />,
+    title: 'Celebrate Every',
+    highlight: 'Rank Up',
+    description: 'Climb the leaderboard and the app lights up with confetti, haptics and a shiny new-rank card. Earned, not given.',
+    gradient: ['#10000a', '#000000'],
+  },
+  {
     id: 'account',
     icon: <UserCheck size={48} color="#FFFFFF" strokeWidth={1.5} />,
     decorIcon: <ChevronRight size={20} color="#CC0000" />,
@@ -147,10 +184,13 @@ export default function OnboardingScreen() {
     }).start();
   }, [currentPage, iconRotate]);
 
+  const TOTAL_PAGES = pages.length + 1;
+  const PAYWALL_INDEX = pages.length;
+
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const page = Math.round(offsetX / SCREEN_WIDTH);
-    if (page !== currentPage && page >= 0 && page < pages.length) {
+    if (page !== currentPage && page >= 0 && page < TOTAL_PAGES) {
       setCurrentPage(page);
       if (Platform.OS !== 'web') {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -162,7 +202,7 @@ export default function OnboardingScreen() {
     if (Platform.OS !== 'web') {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    if (currentPage < pages.length - 1) {
+    if (currentPage < TOTAL_PAGES - 1) {
       const nextPage = currentPage + 1;
       scrollViewRef.current?.scrollTo({
         x: nextPage * SCREEN_WIDTH,
@@ -224,6 +264,7 @@ export default function OnboardingScreen() {
   };
 
   const isLastPage = currentPage === pages.length - 1;
+  const isPaywallPage = currentPage === PAYWALL_INDEX;
 
   const iconSpin = iconRotate.interpolate({
     inputRange: [0, 1],
@@ -232,7 +273,7 @@ export default function OnboardingScreen() {
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {!isLastPage && (
+      {!isLastPage && !isPaywallPage && (
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <View />
           <TouchableOpacity
@@ -289,51 +330,62 @@ export default function OnboardingScreen() {
             </View>
           </View>
         ))}
+
+        <OnboardPaywallPage
+          width={SCREEN_WIDTH}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          onContinue={() => void completeOnboarding()}
+          ctaLabel={undefined}
+          skipLabel="Maybe later"
+        />
       </ScrollView>
 
-      <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={styles.pagination}>
-          {pages.map((_, index) => (
-            <Animated.View
-              key={index}
-              style={[
-                styles.dot,
-                currentPage === index
-                  ? styles.dotActive
-                  : { opacity: pulseAnim },
-              ]}
-            />
-          ))}
+      {!isPaywallPage && (
+        <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.pagination}>
+            {Array.from({ length: TOTAL_PAGES }).map((_, index) => (
+              <Animated.View
+                key={index}
+                style={[
+                  styles.dot,
+                  currentPage === index
+                    ? styles.dotActive
+                    : { opacity: pulseAnim },
+                ]}
+              />
+            ))}
+          </View>
+
+          <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
+            <TouchableOpacity
+              onPress={goToNext}
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+              style={[styles.nextButton, isLastPage && styles.nextButtonFinal]}
+              activeOpacity={0.9}
+              testID="onboarding-next"
+            >
+              <Text style={styles.nextButtonText}>
+                {isLastPage ? 'Create Account' : 'Continue'}
+              </Text>
+              <ChevronRight size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Animated.View>
+
+          {isLastPage && (
+            <TouchableOpacity
+              onPress={browseFirst}
+              style={styles.browseButton}
+              activeOpacity={0.7}
+              testID="onboarding-browse"
+            >
+              <Eye size={16} color="#8E8E93" />
+              <Text style={styles.browseText}>Browse first without account</Text>
+            </TouchableOpacity>
+          )}
         </View>
-
-        <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
-          <TouchableOpacity
-            onPress={goToNext}
-            onPressIn={handleButtonPressIn}
-            onPressOut={handleButtonPressOut}
-            style={[styles.nextButton, isLastPage && styles.nextButtonFinal]}
-            activeOpacity={0.9}
-            testID="onboarding-next"
-          >
-            <Text style={styles.nextButtonText}>
-              {isLastPage ? "Create Account" : 'Continue'}
-            </Text>
-            {!isLastPage && <ChevronRight size={20} color="#FFFFFF" />}
-          </TouchableOpacity>
-        </Animated.View>
-
-        {isLastPage && (
-          <TouchableOpacity
-            onPress={browseFirst}
-            style={styles.browseButton}
-            activeOpacity={0.7}
-            testID="onboarding-browse"
-          >
-            <Eye size={16} color="#8E8E93" />
-            <Text style={styles.browseText}>Browse first without account</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      )}
     </Animated.View>
   );
 }
