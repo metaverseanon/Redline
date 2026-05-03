@@ -12,8 +12,9 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  Share,
 } from 'react-native';
-import { X, Plus, Trash2, UserPlus, LogOut, Trophy, ChevronRight, Lock, Crown } from 'lucide-react-native';
+import { X, Plus, Trash2, UserPlus, LogOut, Trophy, ChevronRight, Lock, Crown, Share2, Flag, CheckCircle2, Clock } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import { useSettings } from '@/providers/SettingsProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -60,6 +61,11 @@ export default function FriendsBoardsModal({
   const [createCategory, setCreateCategory] = useState<Category>('topSpeed');
   const [inviteName, setInviteName] = useState('');
   const [showInvite, setShowInvite] = useState(false);
+  const [showChallenge, setShowChallenge] = useState(false);
+  const [challengeName, setChallengeName] = useState('');
+  const [challengeMetric, setChallengeMetric] = useState<Category>('topSpeed');
+  const [challengeTarget, setChallengeTarget] = useState('');
+  const [challengeDays, setChallengeDays] = useState<number>(7);
 
   const utils = trpc.useUtils?.();
 
@@ -117,6 +123,60 @@ export default function FriendsBoardsModal({
     },
     onError: (e) => Alert.alert('Delete failed', e.message),
   });
+
+  const setChallengeMutation = trpc.privateLeaderboards.setChallenge.useMutation({
+    onSuccess: () => {
+      setShowChallenge(false);
+      setChallengeName('');
+      setChallengeTarget('');
+      if (activeBoardId) {
+        utils?.privateLeaderboards.getDetails.invalidate({ leaderboardId: activeBoardId, userId });
+      }
+      Alert.alert('Challenge set', 'Members have been notified.');
+    },
+    onError: (e) => Alert.alert('Could not set challenge', e.message),
+  });
+
+  const clearChallengeMutation = trpc.privateLeaderboards.clearChallenge.useMutation({
+    onSuccess: () => {
+      if (activeBoardId) {
+        utils?.privateLeaderboards.getDetails.invalidate({ leaderboardId: activeBoardId, userId });
+      }
+    },
+    onError: (e) => Alert.alert('Could not clear challenge', e.message),
+  });
+
+  const handleShareInvite = useCallback(async (boardName: string) => {
+    try {
+      await Share.share({
+        message: `Join my "${boardName}" Friends Board on RedLine 🏁\n\nDownload: https://apps.apple.com/app/redline`,
+      });
+    } catch {
+      // user cancelled
+    }
+  }, []);
+
+  const handleSubmitChallenge = useCallback(() => {
+    if (!activeBoardId) return;
+    const name = challengeName.trim();
+    const target = parseFloat(challengeTarget);
+    if (!name) {
+      Alert.alert('Name required', 'Give your challenge a name.');
+      return;
+    }
+    if (!isFinite(target) || target <= 0) {
+      Alert.alert('Target required', 'Enter a positive target value.');
+      return;
+    }
+    setChallengeMutation.mutate({
+      leaderboardId: activeBoardId,
+      ownerId: userId,
+      name,
+      metric: challengeMetric,
+      targetValue: target,
+      durationDays: challengeDays,
+    });
+  }, [activeBoardId, challengeName, challengeTarget, challengeMetric, challengeDays, userId, setChallengeMutation]);
 
   const tryPaywall = useCallback(async () => {
     try {
@@ -339,6 +399,58 @@ export default function FriendsBoardsModal({
                     <Text style={styles.detailsCount}>{members.length} member{members.length === 1 ? '' : 's'}</Text>
                   </View>
 
+                  {detailsQuery.data?.challenge && (() => {
+                    const ch = detailsQuery.data.challenge;
+                    const remainingMs = ch.endAt - Date.now();
+                    const isActive = remainingMs > 0;
+                    const days = Math.max(0, Math.floor(remainingMs / (24 * 60 * 60 * 1000)));
+                    const hours = Math.max(0, Math.floor((remainingMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)));
+                    const meCompleted = ch.completedUserIds.includes(userId);
+                    const metricLabel = CATEGORY_OPTIONS.find((c) => c.key === ch.metric)?.label ?? ch.metric;
+                    return (
+                      <View style={styles.challengeCard}>
+                        <View style={styles.challengeHeader}>
+                          <Flag size={16} color={colors.accent} />
+                          <Text style={styles.challengeTitle} numberOfLines={1}>{ch.name}</Text>
+                          {meCompleted && <CheckCircle2 size={16} color="#44FF88" />}
+                        </View>
+                        <Text style={styles.challengeGoal}>
+                          Hit {ch.targetValue} {metricLabel}
+                        </Text>
+                        <View style={styles.challengeFooter}>
+                          <View style={styles.challengeTimerRow}>
+                            <Clock size={11} color={colors.textLight} />
+                            <Text style={styles.challengeTimerText}>
+                              {isActive ? `${days}d ${hours}h left` : 'Ended'}
+                            </Text>
+                          </View>
+                          <Text style={styles.challengeProgressText}>
+                            {ch.completedUserIds.length}/{members.length} done
+                          </Text>
+                        </View>
+                        {isOwner && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (!activeBoardId) return;
+                              Alert.alert('End challenge?', 'This removes the current challenge for everyone.', [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'End',
+                                  style: 'destructive',
+                                  onPress: () => clearChallengeMutation.mutate({ leaderboardId: activeBoardId, ownerId: userId }),
+                                },
+                              ]);
+                            }}
+                            style={styles.challengeClearBtn}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.challengeClearText}>END CHALLENGE</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })()}
+
                   {members.map((m) => (
                     <View key={m.userId} style={styles.memberRow}>
                       <View style={styles.rankBadge}>
@@ -369,6 +481,27 @@ export default function FriendsBoardsModal({
                       >
                         <UserPlus size={14} color={colors.text} />
                         <Text style={styles.actionBtnText}>INVITE</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => handleShareInvite(board.name)}
+                      activeOpacity={0.8}
+                    >
+                      <Share2 size={14} color={colors.text} />
+                      <Text style={styles.actionBtnText}>SHARE</Text>
+                    </TouchableOpacity>
+                    {isOwner && !detailsQuery.data?.challenge && (
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => {
+                          setChallengeMetric(board.category as Category);
+                          setShowChallenge(true);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Flag size={14} color={colors.text} />
+                        <Text style={styles.actionBtnText}>CHALLENGE</Text>
                       </TouchableOpacity>
                     )}
                     {!isOwner && (
@@ -447,6 +580,94 @@ export default function FriendsBoardsModal({
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <Text style={styles.primaryBtnText}>SEND INVITE</Text>
+              )}
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showChallenge} transparent animationType="fade" onRequestClose={() => setShowChallenge(false)}>
+        <Pressable style={styles.subOverlay} onPress={() => setShowChallenge(false)}>
+          <Pressable style={styles.subSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.subHeader}>
+              <Flag size={18} color={colors.accent} />
+              <Text style={styles.subTitle}>Set a Challenge</Text>
+              <TouchableOpacity onPress={() => setShowChallenge(false)} style={styles.closeBtn}>
+                <X size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.label, { marginTop: 4 }]}>Challenge name</Text>
+            <TextInput
+              style={styles.input}
+              value={challengeName}
+              onChangeText={setChallengeName}
+              placeholder="e.g. Hit 200 km/h this week"
+              placeholderTextColor={colors.textLight}
+              maxLength={60}
+            />
+
+            <Text style={[styles.label, { marginTop: 12 }]}>Metric</Text>
+            <View style={styles.categoryGrid}>
+              {CATEGORY_OPTIONS.map((c) => {
+                const active = c.key === challengeMetric;
+                return (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[styles.categoryChip, active && styles.categoryChipActive]}
+                    onPress={() => setChallengeMetric(c.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.label, { marginTop: 12 }]}>Target value</Text>
+            <TextInput
+              style={styles.input}
+              value={challengeTarget}
+              onChangeText={setChallengeTarget}
+              placeholder="e.g. 200"
+              placeholderTextColor={colors.textLight}
+              keyboardType="decimal-pad"
+            />
+
+            <Text style={[styles.label, { marginTop: 12 }]}>Duration</Text>
+            <View style={styles.categoryGrid}>
+              {[1, 3, 7, 14, 30].map((d) => {
+                const active = d === challengeDays;
+                return (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.categoryChip, active && styles.categoryChipActive]}
+                    onPress={() => setChallengeDays(d)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
+                      {d} day{d === 1 ? '' : 's'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryBtn, { marginTop: 20 }]}
+              onPress={handleSubmitChallenge}
+              disabled={setChallengeMutation.isPending}
+              activeOpacity={0.8}
+            >
+              {setChallengeMutation.isPending ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Flag size={16} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>START CHALLENGE</Text>
+                </>
               )}
             </TouchableOpacity>
           </Pressable>
@@ -737,5 +958,66 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 14,
       fontFamily: 'Orbitron_700Bold',
       color: colors.text,
+    },
+    challengeCard: {
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 14,
+      backgroundColor: colors.cardBackground,
+    },
+    challengeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    challengeTitle: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.text,
+      letterSpacing: 0.5,
+    },
+    challengeGoal: {
+      fontSize: 12,
+      fontFamily: 'Orbitron_400Regular',
+      color: colors.textLight,
+      marginBottom: 10,
+    },
+    challengeFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    challengeTimerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    challengeTimerText: {
+      fontSize: 11,
+      fontFamily: 'Orbitron_600SemiBold',
+      color: colors.textLight,
+    },
+    challengeProgressText: {
+      fontSize: 11,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.accent,
+    },
+    challengeClearBtn: {
+      marginTop: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      alignItems: 'center',
+    },
+    challengeClearText: {
+      fontSize: 10,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.danger,
+      letterSpacing: 1,
     },
   });

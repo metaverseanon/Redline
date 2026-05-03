@@ -248,6 +248,30 @@ export const [NotificationProvider, useNotifications] = createContextHook(() => 
             },
           ]
         );
+      } else if (data?.type === 'private_board_leave') {
+        const leaver = (data.leaverName as string) || 'A member';
+        const boardName = (data.boardName as string) || 'your board';
+        Alert.alert(
+          '👋 Friends Board update',
+          `${leaver} left "${boardName}"`,
+          [{ text: 'OK', style: 'cancel' }],
+        );
+      } else if (data?.type === 'private_board_challenge') {
+        const challengeName = (data.challengeName as string) || 'a new challenge';
+        const boardName = (data.boardName as string) || 'your board';
+        Alert.alert(
+          '🏁 New Challenge',
+          `"${challengeName}" started in "${boardName}"`,
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'View',
+              onPress: () => {
+                router.navigate('/(tabs)/leaderboard' as any);
+              },
+            },
+          ]
+        );
       }
     });
 
@@ -289,8 +313,8 @@ export const [NotificationProvider, useNotifications] = createContextHook(() => 
           }
         };
         setTimeout(() => tryNav(1), 300);
-      } else if (data?.type === 'private_board_invite') {
-        console.log('[PUSH] Private board invite tapped');
+      } else if (data?.type === 'private_board_invite' || data?.type === 'private_board_leave' || data?.type === 'private_board_challenge') {
+        console.log('[PUSH] Private board notification tapped:', data.type);
         const tryNav = (attempt: number) => {
           try {
             router.navigate('/(tabs)/leaderboard' as any);

@@ -26,6 +26,8 @@ import { useSubscription } from '@/lib/revenuecat';
 import AnimatedCard from '@/components/AnimatedCard';
 import ProBadge from '@/components/ProBadge';
 import FriendsBoardsModal from '@/components/FriendsBoardsModal';
+import RankUpCelebration from '@/components/RankUpCelebration';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CommunityCard from '@/components/CommunityCard';
 import { COUNTRIES } from '@/constants/countries';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
@@ -127,6 +129,9 @@ export default function LeaderboardScreen() {
   const [showFriendsBoards, setShowFriendsBoards] = useState(false);
   const [topTab, setTopTab] = useState<'leaderboard' | 'friends'>('leaderboard');
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('topSpeed');
+  const [rankUp, setRankUp] = useState<{ spots: number; newRank: number } | null>(null);
+  const lastRankByCategory = useRef<Record<string, number>>({});
+  const rankHydrated = useRef<boolean>(false);
   const [filters, setFilters] = useState<LeaderboardFilters>({});
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeFilterType, setActiveFilterType] = useState<FilterType | null>(null);
@@ -1052,6 +1057,43 @@ export default function LeaderboardScreen() {
       });
     return [...new Set(ids)].slice(0, 20);
   }, [leaderboardData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem('@redline:lastRanks').then((raw) => {
+      if (cancelled) return;
+      try {
+        if (raw) lastRankByCategory.current = JSON.parse(raw);
+      } catch {}
+      rankHydrated.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!rankHydrated.current) return;
+    if (!user?.id) return;
+    if (activeCategory === 'challengesCompleted') return;
+    if (!leaderboardData || leaderboardData.length === 0) return;
+
+    const idx = leaderboardData.findIndex(
+      (t) => t.userId === user.id || t.userName === user.displayName,
+    );
+    if (idx === -1) return;
+    const newRank = idx + 1;
+    const prevRank = lastRankByCategory.current[activeCategory];
+
+    if (typeof prevRank === 'number' && newRank < prevRank) {
+      const spots = prevRank - newRank;
+      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+      setRankUp({ spots, newRank });
+    }
+
+    if (prevRank !== newRank) {
+      lastRankByCategory.current = { ...lastRankByCategory.current, [activeCategory]: newRank };
+      AsyncStorage.setItem('@redline:lastRanks', JSON.stringify(lastRankByCategory.current)).catch(() => {});
+    }
+  }, [leaderboardData, activeCategory, user?.id, user?.displayName]);
 
   const batchRoutesQuery = trpc.trips.getBatchRoutePoints.useQuery(
     { tripIds: leaderboardTripIds },
@@ -3015,6 +3057,14 @@ export default function LeaderboardScreen() {
         isSubscribed={isSubscribed}
         presentPaywall={presentPaywall}
         getLastPaywallError={getLastPaywallError}
+      />
+
+      <RankUpCelebration
+        visible={!!rankUp}
+        spotsClimbed={rankUp?.spots ?? 0}
+        newRank={rankUp?.newRank ?? 0}
+        colors={colors}
+        onDismiss={() => setRankUp(null)}
       />
     </SafeAreaView>
   );

@@ -47,6 +47,62 @@ interface TripStatRow {
 
 const TABLE_BOARDS = "private_leaderboards";
 const TABLE_MEMBERS = "private_leaderboard_members";
+const TABLE_CHALLENGES = "private_leaderboard_challenges";
+
+interface ChallengeRow {
+  id: string;
+  leaderboard_id: string;
+  name: string;
+  metric: string;
+  target_value: number;
+  end_at: number;
+  created_at: number;
+}
+
+async function getChallengeRow(leaderboardId: string): Promise<ChallengeRow | null> {
+  const url = `${getSupabaseRestUrl(TABLE_CHALLENGES)}?leaderboard_id=eq.${encodeURIComponent(leaderboardId)}&limit=1`;
+  const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+  if (!resp.ok) return null;
+  const rows = (await resp.json()) as ChallengeRow[];
+  return rows[0] ?? null;
+}
+
+async function sendInvitePush(opts: {
+  toUserId: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const resp = await fetch(
+      `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(opts.toUserId)}&select=push_token&limit=1`,
+      { method: "GET", headers: getSupabaseHeaders() },
+    );
+    if (!resp.ok) return;
+    const rows = (await resp.json()) as { push_token?: string | null }[];
+    const pushToken = rows[0]?.push_token;
+    if (!pushToken) return;
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: pushToken,
+        title: opts.title,
+        body: opts.body,
+        sound: "default",
+        priority: "high",
+        channelId: "default",
+        data: opts.data,
+      }),
+    });
+  } catch (err) {
+    console.error("[PUSH] Failed to send private board push:", err);
+  }
+}
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -253,9 +309,10 @@ export const privateLeaderboardsRouter = createTRPCRouter({
           message: "You are not a member of this board.",
         });
       }
-      const [users, bestByUser] = await Promise.all([
+      const [users, bestByUser, challengeRow] = await Promise.all([
         fetchUsersBrief(memberIds),
         fetchBestStatPerMember(memberIds, board.category as Category),
+        getChallengeRow(board.id),
       ]);
 
       const userById = new Map(users.map((u) => [u.id, u] as const));
@@ -273,6 +330,35 @@ export const privateLeaderboardsRouter = createTRPCRouter({
         .sort((a, b) => b.value - a.value)
         .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
 
+      let challenge: {
+        id: string;
+        name: string;
+        metric: string;
+        targetValue: number;
+        endAt: number;
+        completedUserIds: string[];
+      } | null = null;
+      if (challengeRow) {
+        const challengeBest =
+          challengeRow.metric === board.category
+            ? bestByUser
+            : await fetchBestStatPerMember(memberIds, challengeRow.metric as Category);
+        const completedUserIds: string[] = [];
+        for (const uid of memberIds) {
+          if ((challengeBest.get(uid) ?? 0) >= challengeRow.target_value) {
+            completedUserIds.push(uid);
+          }
+        }
+        challenge = {
+          id: challengeRow.id,
+          name: challengeRow.name,
+          metric: challengeRow.metric,
+          targetValue: challengeRow.target_value,
+          endAt: challengeRow.end_at,
+          completedUserIds,
+        };
+      }
+
       return {
         board: {
           id: board.id,
@@ -282,6 +368,7 @@ export const privateLeaderboardsRouter = createTRPCRouter({
           createdAt: board.created_at,
         },
         members: ranked,
+        challenge,
       };
     }),
 
@@ -340,46 +427,25 @@ export const privateLeaderboardsRouter = createTRPCRouter({
 
       void (async () => {
         try {
-          const [targetResp, ownerResp] = await Promise.all([
-            fetch(
-              `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(target.id)}&select=push_token&limit=1`,
-              { method: "GET", headers: getSupabaseHeaders() },
-            ),
-            fetch(
-              `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.ownerId)}&select=display_name&limit=1`,
-              { method: "GET", headers: getSupabaseHeaders() },
-            ),
-          ]);
-          if (!targetResp.ok) return;
-          const targetRows = (await targetResp.json()) as { push_token?: string | null }[];
-          const pushToken = targetRows[0]?.push_token;
-          if (!pushToken) return;
+          const ownerResp = await fetch(
+            `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.ownerId)}&select=display_name&limit=1`,
+            { method: "GET", headers: getSupabaseHeaders() },
+          );
           let inviterName = "Someone";
           if (ownerResp.ok) {
             const ownerRows = (await ownerResp.json()) as { display_name?: string | null }[];
             if (ownerRows[0]?.display_name) inviterName = ownerRows[0].display_name;
           }
-          await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: {
-              "Accept": "application/json",
-              "Accept-Encoding": "gzip, deflate",
-              "Content-Type": "application/json",
+          await sendInvitePush({
+            toUserId: target.id,
+            title: "👥 Friends Board Invite",
+            body: `${inviterName} added you to "${board.name}"`,
+            data: {
+              type: "private_board_invite",
+              leaderboardId: board.id,
+              boardName: board.name,
+              inviterName,
             },
-            body: JSON.stringify({
-              to: pushToken,
-              title: "👥 Friends Board Invite",
-              body: `${inviterName} added you to "${board.name}"`,
-              sound: "default",
-              priority: "high",
-              channelId: "default",
-              data: {
-                type: "private_board_invite",
-                leaderboardId: board.id,
-                boardName: board.name,
-                inviterName,
-              },
-            }),
           });
         } catch (err) {
           console.error("[PUSH] Failed to send private board invite notification:", err);
@@ -412,6 +478,121 @@ export const privateLeaderboardsRouter = createTRPCRouter({
           message: `Failed to leave board: ${text}`,
         });
       }
+
+      void (async () => {
+        try {
+          const leaverResp = await fetch(
+            `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.userId)}&select=display_name&limit=1`,
+            { method: "GET", headers: getSupabaseHeaders() },
+          );
+          let leaverName = "A member";
+          if (leaverResp.ok) {
+            const rows = (await leaverResp.json()) as { display_name?: string | null }[];
+            if (rows[0]?.display_name) leaverName = rows[0].display_name;
+          }
+          await sendInvitePush({
+            toUserId: board.owner_id,
+            title: "👋 Friends Board update",
+            body: `${leaverName} left "${board.name}"`,
+            data: {
+              type: "private_board_leave",
+              leaderboardId: board.id,
+              boardName: board.name,
+              leaverName,
+            },
+          });
+        } catch (err) {
+          console.error("[PUSH] Failed to send leave notification:", err);
+        }
+      })();
+
+      return { success: true };
+    }),
+
+  setChallenge: publicProcedure
+    .input(
+      z.object({
+        leaderboardId: z.string().min(1),
+        ownerId: z.string().min(1),
+        name: z.string().min(1).max(60),
+        metric: CategoryEnum,
+        targetValue: z.number().positive(),
+        durationDays: z.number().int().min(1).max(90),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      ensureDb();
+      const board = await getBoard(input.leaderboardId);
+      if (!board) throw new TRPCError({ code: "NOT_FOUND", message: "Board not found." });
+      if (board.owner_id !== input.ownerId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can set a challenge." });
+      }
+
+      const now = Date.now();
+      const endAt = now + input.durationDays * 24 * 60 * 60 * 1000;
+
+      await fetch(
+        `${getSupabaseRestUrl(TABLE_CHALLENGES)}?leaderboard_id=eq.${encodeURIComponent(board.id)}`,
+        { method: "DELETE", headers: getSupabaseHeaders() },
+      );
+
+      const row: ChallengeRow = {
+        id: newId("plc"),
+        leaderboard_id: board.id,
+        name: input.name.trim(),
+        metric: input.metric,
+        target_value: input.targetValue,
+        end_at: endAt,
+        created_at: now,
+      };
+      const insertResp = await fetch(getSupabaseRestUrl(TABLE_CHALLENGES), {
+        method: "POST",
+        headers: getSupabaseHeaders(),
+        body: JSON.stringify(row),
+      });
+      if (!insertResp.ok) {
+        const text = await insertResp.text();
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set challenge: ${text}` });
+      }
+
+      void (async () => {
+        try {
+          const memberRows = await getMembers(board.id);
+          for (const m of memberRows) {
+            if (m.user_id === input.ownerId) continue;
+            await sendInvitePush({
+              toUserId: m.user_id,
+              title: "🏁 New Challenge",
+              body: `"${row.name}" started in "${board.name}"`,
+              data: {
+                type: "private_board_challenge",
+                leaderboardId: board.id,
+                boardName: board.name,
+                challengeName: row.name,
+              },
+            });
+          }
+        } catch (err) {
+          console.error("[PUSH] Failed to broadcast challenge:", err);
+        }
+      })();
+
+      return { success: true, challengeId: row.id, endAt };
+    }),
+
+  clearChallenge: publicProcedure
+    .input(z.object({ leaderboardId: z.string().min(1), ownerId: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      ensureDb();
+      const board = await getBoard(input.leaderboardId);
+      if (!board) throw new TRPCError({ code: "NOT_FOUND", message: "Board not found." });
+      if (board.owner_id !== input.ownerId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can clear the challenge." });
+      }
+      await fetch(
+        `${getSupabaseRestUrl(TABLE_CHALLENGES)}?leaderboard_id=eq.${encodeURIComponent(board.id)}`,
+        { method: "DELETE", headers: getSupabaseHeaders() },
+      );
       return { success: true };
     }),
 
