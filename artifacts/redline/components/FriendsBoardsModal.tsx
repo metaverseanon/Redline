@@ -180,6 +180,8 @@ export default function FriendsBoardsModal({
 
   const tryPaywall = useCallback(async () => {
     try {
+      onClose();
+      await new Promise((resolve) => setTimeout(resolve, Platform.OS === 'ios' ? 450 : 250));
       const result = (await presentPaywall()) as PaywallResult | void;
       if (result === 'not_presented' || result === 'error') {
         const reason = getLastPaywallError?.();
@@ -196,7 +198,7 @@ export default function FriendsBoardsModal({
       );
       return 'error' as const;
     }
-  }, [presentPaywall, getLastPaywallError]);
+  }, [presentPaywall, getLastPaywallError, onClose]);
 
   const handleCreatePress = useCallback(() => {
     if (!isSubscribed) {
