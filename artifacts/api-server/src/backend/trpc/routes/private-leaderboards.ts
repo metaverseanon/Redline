@@ -338,6 +338,54 @@ export const privateLeaderboardsRouter = createTRPCRouter({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add member: ${text}` });
       }
 
+      void (async () => {
+        try {
+          const [targetResp, ownerResp] = await Promise.all([
+            fetch(
+              `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(target.id)}&select=push_token&limit=1`,
+              { method: "GET", headers: getSupabaseHeaders() },
+            ),
+            fetch(
+              `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.ownerId)}&select=display_name&limit=1`,
+              { method: "GET", headers: getSupabaseHeaders() },
+            ),
+          ]);
+          if (!targetResp.ok) return;
+          const targetRows = (await targetResp.json()) as { push_token?: string | null }[];
+          const pushToken = targetRows[0]?.push_token;
+          if (!pushToken) return;
+          let inviterName = "Someone";
+          if (ownerResp.ok) {
+            const ownerRows = (await ownerResp.json()) as { display_name?: string | null }[];
+            if (ownerRows[0]?.display_name) inviterName = ownerRows[0].display_name;
+          }
+          await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "Accept-Encoding": "gzip, deflate",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              to: pushToken,
+              title: "👥 Friends Board Invite",
+              body: `${inviterName} added you to "${board.name}"`,
+              sound: "default",
+              priority: "high",
+              channelId: "default",
+              data: {
+                type: "private_board_invite",
+                leaderboardId: board.id,
+                boardName: board.name,
+                inviterName,
+              },
+            }),
+          });
+        } catch (err) {
+          console.error("[PUSH] Failed to send private board invite notification:", err);
+        }
+      })();
+
       return { added: true, userId: target.id, displayName: target.display_name ?? input.displayName };
     }),
 

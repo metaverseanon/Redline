@@ -232,6 +232,22 @@ export const [NotificationProvider, useNotifications] = createContextHook(() => 
             },
           ]
         );
+      } else if (data?.type === 'private_board_invite') {
+        const inviter = (data.inviterName as string) || 'Someone';
+        const boardName = (data.boardName as string) || 'a Friends Board';
+        Alert.alert(
+          '👥 Friends Board Invite',
+          `${inviter} added you to "${boardName}"`,
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'View',
+              onPress: () => {
+                router.navigate('/(tabs)/leaderboard' as any);
+              },
+            },
+          ]
+        );
       }
     });
 
@@ -265,6 +281,16 @@ export const [NotificationProvider, useNotifications] = createContextHook(() => 
         setTimeout(() => tryNav(1), 300);
       } else if (data?.type === 'leaderboard_beat') {
         console.log('[PUSH] Leaderboard beat notification tapped');
+        const tryNav = (attempt: number) => {
+          try {
+            router.navigate('/(tabs)/leaderboard' as any);
+          } catch {
+            if (attempt < 5) setTimeout(() => tryNav(attempt + 1), 500);
+          }
+        };
+        setTimeout(() => tryNav(1), 300);
+      } else if (data?.type === 'private_board_invite') {
+        console.log('[PUSH] Private board invite tapped');
         const tryNav = (attempt: number) => {
           try {
             router.navigate('/(tabs)/leaderboard' as any);
