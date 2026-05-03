@@ -13,9 +13,7 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "RedLine App Pro";
 export const REVENUECAT_PACKAGE_MONTHLY = "monthly";
 export const REVENUECAT_PACKAGE_YEARLY = "yearly";
 
-const PRO_OVERRIDE_EMAILS: string[] = [
-  "tonii8167@gmail.com",
-];
+const PRO_OVERRIDE_EMAILS: string[] = [];
 
 function hasProOverride(email: string | null | undefined): boolean {
   if (!email) return false;
