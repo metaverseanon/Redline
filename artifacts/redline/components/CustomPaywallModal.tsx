@@ -23,6 +23,7 @@ interface CustomPaywallModalProps {
   onClose: (result: PaywallResult) => void;
   onPurchase: (pkg: any) => Promise<any>;
   onRestore: () => Promise<any>;
+  verifyEntitlement?: () => Promise<boolean>;
 }
 
 function formatPrice(price: number, currencyCode: string): string {
@@ -54,6 +55,7 @@ export default function CustomPaywallModal({
   onClose,
   onPurchase,
   onRestore,
+  verifyEntitlement,
 }: CustomPaywallModalProps) {
   const [selected, setSelected] = useState<"monthly" | "yearly">("yearly");
   const [busy, setBusy] = useState(false);
@@ -96,18 +98,45 @@ export default function CustomPaywallModal({
     }
     setBusy(true);
     try {
-      await onPurchase(selectedPackage);
+      const customerInfo: any = await onPurchase(selectedPackage);
+      const isActive =
+        !!customerInfo?.entitlements?.active &&
+        Object.keys(customerInfo.entitlements.active).length > 0;
+      if (isActive) {
+        onClose("purchased");
+        return;
+      }
+      if (verifyEntitlement) {
+        try {
+          if (await verifyEntitlement()) {
+            onClose("purchased");
+            return;
+          }
+        } catch {}
+      }
       onClose("purchased");
     } catch (err: any) {
-      const message = err?.message ?? "Purchase failed. Please try again.";
-      const userCancelled = err?.userCancelled === true || /cancel/i.test(message);
-      if (!userCancelled) {
-        Alert.alert("Purchase failed", message);
+      const message: string = err?.message ?? "Purchase failed. Please try again.";
+      const code: string = String(err?.code ?? err?.userInfo?.readable_error_code ?? "");
+      const userCancelled =
+        err?.userCancelled === true ||
+        code === "1" ||
+        /PURCHASE_CANCELLED/i.test(code) ||
+        /cancel/i.test(message);
+      if (userCancelled) return;
+      if (verifyEntitlement) {
+        try {
+          if (await verifyEntitlement()) {
+            onClose("purchased");
+            return;
+          }
+        } catch {}
       }
+      Alert.alert("Purchase failed", message);
     } finally {
       setBusy(false);
     }
-  }, [selectedPackage, onPurchase, onClose, busy]);
+  }, [selectedPackage, onPurchase, onClose, busy, verifyEntitlement]);
 
   const handleRestore = useCallback(async () => {
     if (busy) return;

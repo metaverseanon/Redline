@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Crown, Check, ChevronRight, Bell, Share2, Flag, Trophy } from 'lucide-react-native';
-import { useSubscription } from '@/lib/revenuecat';
+import { useSubscription, REVENUECAT_ENTITLEMENT_IDENTIFIER } from '@/lib/revenuecat';
 
 interface OnboardPaywallPageProps {
   onContinue: () => void;
@@ -50,7 +50,7 @@ export default function OnboardPaywallPage({
   ctaLabel,
   skipLabel = 'Maybe later',
 }: OnboardPaywallPageProps) {
-  const { monthlyPackage, yearlyPackage, purchase, restore, isLoading } = useSubscription();
+  const { monthlyPackage, yearlyPackage, purchase, restore, isLoading, refetchCustomerInfo } = useSubscription();
   const [selected, setSelected] = useState<'monthly' | 'yearly'>('yearly');
   const [busy, setBusy] = useState(false);
 
@@ -85,18 +85,50 @@ export default function OnboardPaywallPage({
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
     try {
-      await purchase(selectedPackage);
+      const customerInfo: any = await purchase(selectedPackage);
+      const isActive =
+        !!customerInfo?.entitlements?.active &&
+        Object.keys(customerInfo.entitlements.active).length > 0;
+      if (isActive) {
+        onContinue();
+        return;
+      }
+      try {
+        const fresh: any = await refetchCustomerInfo?.();
+        const freshActive =
+          !!fresh?.data?.entitlements?.active &&
+          Object.keys(fresh.data.entitlements.active).length > 0;
+        if (freshActive) {
+          onContinue();
+          return;
+        }
+      } catch {}
       onContinue();
     } catch (err: any) {
-      const message = err?.message ?? 'Purchase failed. Please try again.';
-      const userCancelled = err?.userCancelled === true || /cancel/i.test(message);
-      if (!userCancelled) {
-        Alert.alert('Purchase failed', message);
-      }
+      const message: string = err?.message ?? 'Purchase failed. Please try again.';
+      const code: string = String(err?.code ?? err?.userInfo?.readable_error_code ?? '');
+      const userCancelled =
+        err?.userCancelled === true ||
+        code === '1' ||
+        /PURCHASE_CANCELLED/i.test(code) ||
+        /cancel/i.test(message);
+      if (userCancelled) return;
+      try {
+        const fresh: any = await refetchCustomerInfo?.();
+        const freshActive =
+          !!fresh?.data?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER] ||
+          (!!fresh?.data?.entitlements?.active &&
+            Object.keys(fresh.data.entitlements.active).length > 0);
+        if (freshActive) {
+          onContinue();
+          return;
+        }
+      } catch {}
+      Alert.alert('Purchase failed', message);
     } finally {
       setBusy(false);
     }
-  }, [selectedPackage, purchase, onContinue, busy]);
+  }, [selectedPackage, purchase, onContinue, busy, refetchCustomerInfo]);
 
   const handleRestore = useCallback(async () => {
     if (busy) return;

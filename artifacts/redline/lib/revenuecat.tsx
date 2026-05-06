@@ -334,6 +334,15 @@ export function SubscriptionProvider({
         onClose={value.handlePaywallClose}
         onPurchase={value.purchase}
         onRestore={value.restore}
+        verifyEntitlement={async () => {
+          try {
+            const fresh: any = await value.refetchCustomerInfo();
+            const active = fresh?.data?.entitlements?.active;
+            return !!active && Object.keys(active).length > 0;
+          } catch {
+            return false;
+          }
+        }}
       />
     </Context.Provider>
   );
