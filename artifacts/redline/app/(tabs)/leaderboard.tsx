@@ -2,7 +2,9 @@ import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from '
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Image, Platform, Alert, ActivityIndicator, Linking, Animated, RefreshControl } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Trophy, Zap, Navigation, Gauge, ChevronDown, X, MapPin, Car, Filter, Activity, Route, Search, Clock, Calendar, CornerDownRight, ChevronRight, Timer, Users, Send, Bell, Check, XCircle, Share2, Navigation2, MessageCircle, AlertCircle, UserPlus, UserCheck } from 'lucide-react-native';
+import { Trophy, Zap, Navigation, Gauge, ChevronDown, X, MapPin, Car, Filter, Activity, Route, Search, Clock, Calendar, CornerDownRight, ChevronRight, Timer, Users, Send, Bell, Check, XCircle, Share2, Navigation2, MessageCircle, AlertCircle, UserPlus, UserCheck, Lock, Crown } from 'lucide-react-native';
+
+const LEADERBOARD_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
 import * as Location from 'expo-location';
 import type { DriveMeetup } from '@/types/meetup';
 import * as Haptics from 'expo-haptics';
@@ -879,6 +881,30 @@ export default function LeaderboardScreen() {
 
   const timePeriodStart = useMemo(() => getTimePeriodStart(timePeriod), [timePeriod, getTimePeriodStart]);
 
+  const isLeaderboardLocked = useMemo(() => {
+    if (isSubscribed) return false;
+    const created = user?.createdAt ?? 0;
+    return created >= LEADERBOARD_PAYWALL_CUTOFF_MS;
+  }, [isSubscribed, user?.createdAt]);
+
+  const handleUnlockLeaderboard = useCallback(async () => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    try {
+      const result = await presentPaywall();
+      if (result === 'not_presented' || result === 'error') {
+        const lastErr = getLastPaywallError?.();
+        Alert.alert(
+          'Subscription unavailable',
+          lastErr || 'The paywall could not be opened. Please check your connection and try again.'
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Subscription unavailable', e?.message ?? 'Please try again.');
+    }
+  }, [presentPaywall, getLastPaywallError]);
+
   const leaderboardTripsQuery = trpc.trips.getLeaderboardTrips.useQuery(
     {
       category: activeCategory === 'challengesCompleted' ? 'topSpeed' : activeCategory,
@@ -1583,6 +1609,43 @@ export default function LeaderboardScreen() {
         }
       >
       {topTabsView}
+      {isLeaderboardLocked ? (
+        <View style={styles.leaderboardLockCard}>
+          <View style={styles.leaderboardLockIconWrap}>
+            <Crown size={36} color={colors.accent} />
+          </View>
+          <Text style={styles.leaderboardLockTitle}>Unlock the Global Leaderboard</Text>
+          <Text style={styles.leaderboardLockSubtitle}>
+            Compete with drivers around the world. See top speeds, fastest 0–100s, longest distances and more — filter by country, city, brand and model.
+          </Text>
+          <View style={styles.leaderboardLockBullets}>
+            <View style={styles.leaderboardLockBulletRow}>
+              <Trophy size={16} color={colors.accent} />
+              <Text style={styles.leaderboardLockBulletText}>Global rankings across every category</Text>
+            </View>
+            <View style={styles.leaderboardLockBulletRow}>
+              <Users size={16} color={colors.accent} />
+              <Text style={styles.leaderboardLockBulletText}>Private friends boards & invites</Text>
+            </View>
+            <View style={styles.leaderboardLockBulletRow}>
+              <Zap size={16} color={colors.accent} />
+              <Text style={styles.leaderboardLockBulletText}>Advanced stats, recap, and Pro filters</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.leaderboardLockCta}
+            onPress={handleUnlockLeaderboard}
+            activeOpacity={0.85}
+          >
+            <Lock size={16} color={colors.textInverted} />
+            <Text style={styles.leaderboardLockCtaText}>Unlock with Pro</Text>
+          </TouchableOpacity>
+          <Text style={styles.leaderboardLockFootnote}>
+            Tracking your own drives stays free — anything you record is saved locally and on your profile.
+          </Text>
+        </View>
+      ) : (
+      <>
       <View style={styles.filtersContainer}>
         <Text style={styles.sectionLabel}>Choose Category</Text>
         <TouchableOpacity
@@ -1992,6 +2055,8 @@ export default function LeaderboardScreen() {
             })}
           </View>
         )}
+      </>
+      )}
       </ScrollView>
       </>
       )}
@@ -3183,6 +3248,79 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textLight,
     textAlign: 'center' as const,
     lineHeight: 18,
+  },
+  leaderboardLockCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  leaderboardLockIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  leaderboardLockTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  leaderboardLockSubtitle: {
+    fontSize: 14,
+    color: colors.textLight,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  leaderboardLockBullets: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  leaderboardLockBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  leaderboardLockBulletText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+  },
+  leaderboardLockCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+    marginBottom: 12,
+  },
+  leaderboardLockCtaText: {
+    color: colors.textInverted,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  leaderboardLockFootnote: {
+    fontSize: 12,
+    color: colors.textLight,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   friendsHeroCard: {
     backgroundColor: colors.cardBackground,
