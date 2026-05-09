@@ -3,11 +3,11 @@ import { StyleSheet, Animated, Image, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { CURRENT_APP_VERSION } from './whats-new';
 
 const ONBOARDING_KEY = 'onboarding_completed';
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-const CURRENT_APP_VERSION = '1.9.8';
-const _BUILD_TIMESTAMP = '20260329';
+const _BUILD_TIMESTAMP = '20260509';
 
 export default function WelcomeScreen() {
   const router = useRouter();
