@@ -15,12 +15,12 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp } from 'lucide-react-native';
+import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp, Crown, ShieldCheck } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-export const CURRENT_APP_VERSION = '1.9.8';
+export const CURRENT_APP_VERSION = '1.9.9';
 
 interface FeaturePage {
   id: string;
@@ -33,6 +33,24 @@ interface FeaturePage {
 }
 
 const features: FeaturePage[] = [
+  {
+    id: 'smoother-purchases',
+    icon: <ShieldCheck size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <ShieldCheck size={20} color="#CC0000" />,
+    tag: 'RELIABILITY',
+    title: 'Smoother',
+    highlight: 'Purchases',
+    description: 'We rebuilt the in-app purchase flow from the ground up. No more "error after purchase" — your subscription unlocks the moment Apple confirms it.',
+  },
+  {
+    id: 'global-leaderboard-pro',
+    icon: <Crown size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Trophy size={20} color="#CC0000" />,
+    tag: 'PRO',
+    title: 'Global',
+    highlight: 'Leaderboard',
+    description: 'New accounts now unlock the global leaderboard with RedLine Pro. Compete worldwide, filter by country, city, brand and model.',
+  },
   {
     id: 'leave-notif',
     icon: <Bell size={48} color="#FFFFFF" strokeWidth={1.5} />,

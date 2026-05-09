@@ -47,7 +47,7 @@ const pages: OnboardingPage[] = [
     decorIcon: <Target size={20} color="#CC0000" />,
     title: 'Climb The',
     highlight: 'Leaderboard',
-    description: 'Compete with drivers worldwide. Top speed, longest distance, best acceleration — claim your rank.',
+    description: 'Compete with drivers worldwide on top speed, distance and acceleration. Global rankings, friends boards and Pro filters are part of RedLine Pro.',
     gradient: ['#0a0a0a', '#000000'],
   },
   {
