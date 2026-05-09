@@ -2,13 +2,17 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform, Animated, Alert } from 'react-native';
 import * as ExpoLocation from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, Square, Map, Gauge, X, Timer } from 'lucide-react-native';
+import { Play, Square, Map, Gauge, X, Timer, Lock, Crown } from 'lucide-react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
+import { useSubscription } from '@/lib/revenuecat';
 import TripShareCard from '@/components/TripShareCard';
 import AuthGate from '@/components/AuthGate';
+
+const TRACK_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
+const FREE_TRIP_LIMIT = 3;
 
 let MapView: React.ComponentType<any> | null = null;
 let Polyline: React.ComponentType<any> | null = null;
@@ -48,9 +52,10 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
 }
 
 export default function TrackScreen() {
-  const { isTracking, currentTrip, currentSpeed, currentLocation, startTracking, stopTracking, cancelTracking, lastSavedTrip, clearLastSavedTrip, speedCameraBlocked } = useTrips();
+  const { trips, isTracking, currentTrip, currentSpeed, currentLocation, startTracking, stopTracking, cancelTracking, lastSavedTrip, clearLastSavedTrip, speedCameraBlocked } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, colors } = useSettings();
   const { user } = useUser();
+  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const [showShareCard, setShowShareCard] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('standard');
   const mapRef = useRef<any>(null);
@@ -58,6 +63,38 @@ export default function TrackScreen() {
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationFetched = useRef(false);
   const [showAuthGate, setShowAuthGate] = useState(false);
+
+  const isTrackPaywallEligible = (user?.createdAt ?? 0) >= TRACK_PAYWALL_CUTOFF_MS && !isSubscribed;
+  const freeTripsRemaining = Math.max(0, FREE_TRIP_LIMIT - trips.length);
+  const isTrackLocked = isTrackPaywallEligible && trips.length >= FREE_TRIP_LIMIT;
+  const showFreeTripBanner = isTrackPaywallEligible;
+
+  const handleUnlockTrack = useCallback(async () => {
+    try {
+      const result = await presentPaywall();
+      if (result === 'not_presented' || result === 'error') {
+        const lastErr = getLastPaywallError?.();
+        Alert.alert(
+          'Subscription unavailable',
+          lastErr || 'The paywall could not be opened. Please check your connection and try again.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Subscription unavailable', e?.message ?? 'Please try again.');
+    }
+  }, [presentPaywall, getLastPaywallError]);
+
+  const handleStartPress = useCallback(() => {
+    if (!user) {
+      setShowAuthGate(true);
+      return;
+    }
+    if (isTrackLocked) {
+      void handleUnlockTrack();
+      return;
+    }
+    void startTracking();
+  }, [user, isTrackLocked, handleUnlockTrack, startTracking]);
 
   useEffect(() => {
     if (lastSavedTrip && !isTracking) {
@@ -348,21 +385,25 @@ export default function TrackScreen() {
       </ScrollView>
 
       <View style={sStyles.buttonContainer}>
+        {!isTracking && showFreeTripBanner && (
+          <View style={[freeTripStyles.banner, { backgroundColor: cardBg, borderColor: isTrackLocked ? '#FFB300' : cardBorder }]}>
+            {isTrackLocked ? <Lock size={14} color="#FFB300" /> : <Crown size={14} color="#FFB300" />}
+            <Text style={[freeTripStyles.bannerText, { color: colors.text }]}>
+              {isTrackLocked
+                ? 'Free trip limit reached — upgrade to Pro for unlimited trips'
+                : `${freeTripsRemaining} of ${FREE_TRIP_LIMIT} free trips remaining`}
+            </Text>
+          </View>
+        )}
         {!isTracking ? (
           <TouchableOpacity
-            style={[sStyles.actionButton, sStyles.startButton]}
-            onPress={() => {
-              if (!user) {
-                setShowAuthGate(true);
-                return;
-              }
-              void startTracking();
-            }}
+            style={[sStyles.actionButton, isTrackLocked ? sStyles.lockedButton : sStyles.startButton]}
+            onPress={handleStartPress}
             activeOpacity={0.8}
             testID="start-trip-button"
           >
-            <Text style={sStyles.buttonText}>START TRIP</Text>
-            <Play size={20} color="#FFFFFF" fill="#FFFFFF" />
+            <Text style={sStyles.buttonText}>{isTrackLocked ? 'UPGRADE TO PRO' : 'START TRIP'}</Text>
+            {isTrackLocked ? <Crown size={20} color="#FFFFFF" /> : <Play size={20} color="#FFFFFF" fill="#FFFFFF" />}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -442,9 +483,9 @@ export default function TrackScreen() {
 
         <View style={[mapStyles.mapButtonContainer, { backgroundColor: 'transparent' }]}>
           {!isTracking ? (
-            <TouchableOpacity style={[sStyles.actionButton, sStyles.startButton]} onPress={() => { if (!user) { setShowAuthGate(true); return; } void startTracking(); }} activeOpacity={0.8}>
-              <Play size={24} color="#FFFFFF" fill="#FFFFFF" />
-              <Text style={sStyles.buttonText}>START TRIP</Text>
+            <TouchableOpacity style={[sStyles.actionButton, isTrackLocked ? sStyles.lockedButton : sStyles.startButton]} onPress={handleStartPress} activeOpacity={0.8}>
+              {isTrackLocked ? <Crown size={24} color="#FFFFFF" /> : <Play size={24} color="#FFFFFF" fill="#FFFFFF" />}
+              <Text style={sStyles.buttonText}>{isTrackLocked ? 'UPGRADE TO PRO' : 'START TRIP'}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={[sStyles.actionButton, sStyles.stopButton]} onPress={handleStopTracking} activeOpacity={0.8}>
@@ -704,6 +745,9 @@ const sStyles = StyleSheet.create({
   stopButton: {
     backgroundColor: '#CC0000',
   },
+  lockedButton: {
+    backgroundColor: '#FFB300',
+  },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
@@ -803,5 +847,24 @@ const mapStyles = StyleSheet.create({
     backgroundColor: '#007AFF',
     borderWidth: 2.5,
     borderColor: '#FFFFFF',
+  },
+});
+
+const freeTripStyles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  bannerText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    letterSpacing: 0.3,
   },
 });
