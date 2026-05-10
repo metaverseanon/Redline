@@ -346,25 +346,33 @@ export default function FeedScreen() {
   }, [postsQuery.data]);
 
   const discoverFeed = useMemo((): DiscoverItem[] => {
-    const drives: DiscoverItem[] = (discoverDrivesQuery.data ?? []).map((d) => ({
-      kind: 'drive' as const,
-      data: d,
-    }));
-    const posts: DiscoverItem[] = (discoverPostsQuery.data ?? []).map((p) => ({
-      kind: 'post' as const,
-      data: p,
-    }));
+    const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - FIVE_DAYS_MS;
+
+    const drives: DiscoverItem[] = (discoverDrivesQuery.data ?? [])
+      .filter((d) => (d.createdAt ?? 0) >= cutoff)
+      .map((d) => ({ kind: 'drive' as const, data: d }))
+      .sort((a, b) => b.data.createdAt - a.data.createdAt);
+    const posts: DiscoverItem[] = (discoverPostsQuery.data ?? [])
+      .filter((p) => (p.createdAt ?? 0) >= cutoff)
+      .map((p) => ({ kind: 'post' as const, data: p }))
+      .sort((a, b) => b.data.createdAt - a.data.createdAt);
 
     const seenIds = new Set<string>();
     const combined: DiscoverItem[] = [];
-    for (const item of [...drives, ...posts]) {
-      if (!seenIds.has(item.data.id)) {
-        seenIds.add(item.data.id);
-        combined.push(item);
+    let i = 0;
+    let j = 0;
+    let pickDrive = true;
+    while (i < drives.length || j < posts.length) {
+      const next = pickDrive
+        ? (i < drives.length ? drives[i++] : posts[j++])
+        : (j < posts.length ? posts[j++] : drives[i++]);
+      pickDrive = !pickDrive;
+      if (!seenIds.has(next.data.id)) {
+        seenIds.add(next.data.id);
+        combined.push(next);
       }
     }
-
-    combined.sort((a, b) => b.data.createdAt - a.data.createdAt);
     return combined;
   }, [discoverDrivesQuery.data, discoverPostsQuery.data]);
 

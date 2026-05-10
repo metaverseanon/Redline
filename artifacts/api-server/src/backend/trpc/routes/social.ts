@@ -800,8 +800,8 @@ export const socialRouter = createTRPCRouter({
         const followingIds = new Set(followRows.map(r => r.following_id));
         followingIds.add(input.userId);
 
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const feedUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=200&created_at=gte.${thirtyDaysAgo}`;
+        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
+        const feedUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=200&created_at=gte.${fiveDaysAgo}`;
         const feedResp = await fetch(feedUrl, { method: "GET", headers: getSupabaseHeaders() });
         if (!feedResp.ok) {
           const err = await feedResp.text();
@@ -809,24 +809,9 @@ export const socialRouter = createTRPCRouter({
           throw new Error(`Discover drives recent fetch failed: ${err}`);
         }
 
-        let allRows: ActivityFeedRow[] = await feedResp.json();
-        let discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
-        console.log("[SOCIAL] Discover drives candidates (recent, non-followed):", discoverRows.length);
-
-        if (discoverRows.length === 0) {
-          const allTimeUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=300`;
-          const allTimeResp = await fetch(allTimeUrl, { method: "GET", headers: getSupabaseHeaders() });
-          if (allTimeResp.ok) {
-            allRows = await allTimeResp.json();
-            discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
-            console.log("[SOCIAL] Discover drives candidates (all-time fallback, non-followed):", discoverRows.length);
-          }
-        }
-
-        if (discoverRows.length === 0 && allRows.length > 0) {
-          discoverRows = allRows.filter(r => (r.top_speed ?? 0) > 0);
-          console.log("[SOCIAL] Discover drives final fallback (include followed):", discoverRows.length);
-        }
+        const allRows: ActivityFeedRow[] = await feedResp.json();
+        const discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
+        console.log("[SOCIAL] Discover drives candidates (last 5d, non-followed):", discoverRows.length);
 
         const userCounts = new Map<string, number>();
         const uniqueRows: ActivityFeedRow[] = [];

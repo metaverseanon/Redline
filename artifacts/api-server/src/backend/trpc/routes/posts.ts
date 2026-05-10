@@ -582,8 +582,8 @@ export const postsRouter = createTRPCRouter({
         const followingIds = new Set(followRows.map((r) => r.following_id));
         followingIds.add(input.userId);
 
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const postsUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=200&created_at=gte.${thirtyDaysAgo}`;
+        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
+        const postsUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=200&created_at=gte.${fiveDaysAgo}`;
         const postsResp = await fetch(postsUrl, { method: "GET", headers: getSupabaseHeaders() });
         if (!postsResp.ok) {
           const err = await postsResp.text();
@@ -591,24 +591,9 @@ export const postsRouter = createTRPCRouter({
           throw new Error(`Discover posts recent fetch failed: ${err}`);
         }
 
-        let allPosts: PostRow[] = await postsResp.json();
-        let discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
-        console.log("[POSTS] Discover posts candidates (recent, non-followed):", discoverPosts.length);
-
-        if (discoverPosts.length === 0) {
-          const allTimeUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=300`;
-          const allTimeResp = await fetch(allTimeUrl, { method: "GET", headers: getSupabaseHeaders() });
-          if (allTimeResp.ok) {
-            allPosts = await allTimeResp.json();
-            discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
-            console.log("[POSTS] Discover posts candidates (all-time fallback, non-followed):", discoverPosts.length);
-          }
-        }
-
-        if (discoverPosts.length === 0 && allPosts.length > 0) {
-          discoverPosts = allPosts;
-          console.log("[POSTS] Discover posts final fallback (include followed):", discoverPosts.length);
-        }
+        const allPosts: PostRow[] = await postsResp.json();
+        const discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
+        console.log("[POSTS] Discover posts candidates (last 5d, non-followed):", discoverPosts.length);
 
         const userCounts = new Map<string, number>();
         const uniquePosts: PostRow[] = [];
