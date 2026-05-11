@@ -9,6 +9,7 @@ import { postsRouter } from "./routes/posts";
 import { analyticsRouter } from "./routes/analytics";
 import { privateLeaderboardsRouter } from "./routes/private-leaderboards";
 import { communitiesRouter } from "./routes/communities";
+import { speedCamerasRouter } from "./routes/speed-cameras";
 
 console.log("[ROUTER] Initializing app router v1.2");
 
@@ -23,6 +24,7 @@ export const appRouter = createTRPCRouter({
   analytics: analyticsRouter,
   privateLeaderboards: privateLeaderboardsRouter,
   communities: communitiesRouter,
+  speedCameras: speedCamerasRouter,
 });
 
 export type AppRouter = typeof appRouter;

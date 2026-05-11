@@ -6,7 +6,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TripStats, Location as LocationType, TripLocation } from '@/types/trip';
-import { getNearbyCameras, isSpeedCameraRestricted, SPEED_CAMERA_WARNING_RADIUS_KM } from '@/constants/speedCameras';
+import {
+  getNearbyCameras,
+  isSpeedCameraRestricted,
+  setCachedCameras,
+  haversineDistance,
+  SPEED_CAMERA_WARNING_RADIUS_KM,
+  SPEED_CAMERA_FETCH_RADIUS_KM,
+  SPEED_CAMERA_REFETCH_THRESHOLD_KM,
+} from '@/constants/speedCameras';
 import { trpcClient } from '@/lib/trpc';
 import { useUser } from '@/providers/UserProvider';
 
@@ -183,6 +191,8 @@ export const [TripProvider, useTrips] = createContextHook(() => {
   const detectedCameraIds = useRef<Set<string>>(new Set());
   const warnedCameraIds = useRef<Set<string>>(new Set());
   const speedCamerasCount = useRef<number>(0);
+  const lastCameraFetchCenter = useRef<{ latitude: number; longitude: number } | null>(null);
+  const cameraFetchInFlight = useRef<boolean>(false);
   const currentCountry = useRef<string | null>(null);
   const [speedCameraBlocked, setSpeedCameraBlocked] = useState(false);
   const currentSpeedRef = useRef<number>(0);
@@ -639,6 +649,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     let corners = tripData.corners;
 
     if (!isSpeedCameraRestricted(currentCountry.current)) {
+      ensureCamerasNear(newLocation.latitude, newLocation.longitude);
       const warningCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude, SPEED_CAMERA_WARNING_RADIUS_KM);
       for (const camera of warningCameras) {
         if (!warnedCameraIds.current.has(camera.id)) {
@@ -718,6 +729,39 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     debouncedSaveTrip(updated);
   };
 
+  const ensureCamerasNear = (latitude: number, longitude: number) => {
+    if (Platform.OS === 'web') return;
+    if (cameraFetchInFlight.current) return;
+    const center = lastCameraFetchCenter.current;
+    if (
+      center &&
+      haversineDistance(latitude, longitude, center.latitude, center.longitude) <
+        SPEED_CAMERA_REFETCH_THRESHOLD_KM
+    ) {
+      return;
+    }
+    cameraFetchInFlight.current = true;
+    trpcClient.speedCameras.getNearby
+      .query({ latitude, longitude, radiusKm: SPEED_CAMERA_FETCH_RADIUS_KM })
+      .then((res) => {
+        setCachedCameras(res.cameras);
+        lastCameraFetchCenter.current = { latitude, longitude };
+        console.log(
+          '[SPEED_CAMERA] Loaded',
+          res.cameras.length,
+          'cameras for tile',
+          res.tileKey,
+          'cachedHit=' + res.cachedHit
+        );
+      })
+      .catch((err) => {
+        console.error('[SPEED_CAMERA] Fetch failed:', err);
+      })
+      .finally(() => {
+        cameraFetchInFlight.current = false;
+      });
+  };
+
   const processLocationUpdate = (location: ExpoLocation.LocationObject) => {
     const rawSpeed = Math.max(0, (location.coords.speed ?? 0) * 3.6);
     const speed = rawSpeed < SPEED_NOISE_THRESHOLD ? 0 : rawSpeed;
@@ -746,6 +790,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     let corners = tripData.corners;
 
     if (!isSpeedCameraRestricted(currentCountry.current)) {
+      ensureCamerasNear(newLocation.latitude, newLocation.longitude);
       const warningCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude, SPEED_CAMERA_WARNING_RADIUS_KM);
       for (const camera of warningCameras) {
         if (!warnedCameraIds.current.has(camera.id)) {
