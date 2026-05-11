@@ -1357,6 +1357,63 @@ export const userRouter = createTRPCRouter({
       }
     }),
 
+  backfillWelcomeEmails: publicProcedure
+    .input(z.object({ limit: z.number().optional().default(100) }))
+    .mutation(async ({ input }) => {
+      console.log("[BACKFILL] Welcome email backfill started, limit:", input.limit);
+      if (!isDbConfigured()) return { success: false, error: "Database not configured" };
+
+      try {
+        const url = `${getSupabaseRestUrl("users")}?welcome_email_sent=eq.false&select=id,email,display_name&limit=${input.limit}`;
+        const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+        if (!resp.ok) {
+          const err = await resp.text();
+          console.error("[BACKFILL] Fetch failed:", err);
+          return { success: false, error: err };
+        }
+
+        const rows = (await resp.json()) as { id: string; email: string; display_name: string }[];
+        console.log("[BACKFILL] Found", rows.length, "users without welcome email");
+
+        let sent = 0;
+        let failed = 0;
+        const failures: { email: string; reason: string }[] = [];
+
+        for (const row of rows) {
+          if (!row.email || !row.display_name) {
+            failed++;
+            failures.push({ email: row.email ?? "(no email)", reason: "missing email or display_name" });
+            continue;
+          }
+          try {
+            const ok = await sendWelcomeEmail(row.email, row.display_name);
+            if (ok) {
+              const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(row.id)}`;
+              await fetch(patchUrl, {
+                method: "PATCH",
+                headers: getSupabaseHeaders(),
+                body: JSON.stringify({ welcome_email_sent: true }),
+              });
+              sent++;
+            } else {
+              failed++;
+              failures.push({ email: row.email, reason: "sendWelcomeEmail returned false" });
+            }
+          } catch (e) {
+            failed++;
+            failures.push({ email: row.email, reason: e instanceof Error ? e.message : String(e) });
+          }
+          await new Promise((r) => setTimeout(r, 600));
+        }
+
+        console.log("[BACKFILL] Done. Sent:", sent, "Failed:", failed);
+        return { success: true, total: rows.length, sent, failed, failures };
+      } catch (error) {
+        console.error("[BACKFILL] Error:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      }
+    }),
+
   deleteAccount: publicProcedure
     .input(z.object({
       userId: z.string(),

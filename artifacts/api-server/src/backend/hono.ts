@@ -136,6 +136,38 @@ for (const prefix of ["/cron", "/api/cron"]) {
   app.post(`${prefix}/drive_reminder`, driveReminderHandler);
 }
 
+const backfillWelcomeEmailsHandler = async (c: any) => {
+  const authHeader = c.req.header("Authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    console.log("[CRON] Unauthorized request to backfill-welcome-emails");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  console.log("[CRON] Backfill welcome emails triggered at", new Date().toISOString());
+
+  try {
+    const limitParam = c.req.query("limit");
+    const limit = limitParam ? Math.max(1, Math.min(500, parseInt(limitParam, 10) || 100)) : 100;
+    const caller = appRouter.createCaller({ req: c.req.raw, db: getDbConfig() });
+    const result = await caller.user.backfillWelcomeEmails({ limit });
+    console.log("[CRON] Backfill completed:", result);
+    return c.json({ ...result, triggeredAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[CRON] Backfill failed:", error);
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }, 500);
+  }
+};
+
+for (const prefix of ["/cron", "/api/cron"]) {
+  app.get(`${prefix}/backfill-welcome-emails`, backfillWelcomeEmailsHandler);
+  app.post(`${prefix}/backfill-welcome-emails`, backfillWelcomeEmailsHandler);
+}
+
 const cronCatchAll = (c: any) => {
   console.log("[CRON] Unmatched cron route:", c.req.method, c.req.url, c.req.path);
   return c.json({ error: "Unknown cron route", method: c.req.method, path: c.req.path, url: c.req.url }, 404);
