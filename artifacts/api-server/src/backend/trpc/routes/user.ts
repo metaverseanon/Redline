@@ -1334,6 +1334,22 @@ export const userRouter = createTRPCRouter({
         }
 
         console.log("[USER] User inserted via ensureUser:", input.id);
+
+        try {
+          const emailSent = await sendWelcomeEmail(input.email, input.displayName);
+          if (emailSent) {
+            const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}`;
+            await fetch(patchUrl, {
+              method: "PATCH",
+              headers: getSupabaseHeaders(),
+              body: JSON.stringify({ welcome_email_sent: true }),
+            });
+            console.log("[USER] Welcome email sent via ensureUser to:", input.email);
+          }
+        } catch (e) {
+          console.error("[USER] Welcome email send failed in ensureUser:", e);
+        }
+
         return { success: true, action: "inserted" };
       } catch (error) {
         console.error("[USER] ensureUser error:", error);

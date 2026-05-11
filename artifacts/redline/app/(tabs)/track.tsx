@@ -65,8 +65,11 @@ export default function TrackScreen() {
   const [showAuthGate, setShowAuthGate] = useState(false);
 
   const isTrackPaywallEligible = (user?.createdAt ?? 0) >= TRACK_PAYWALL_CUTOFF_MS && !isSubscribed;
-  const freeTripsRemaining = Math.max(0, FREE_TRIP_LIMIT - trips.length);
-  const isTrackLocked = isTrackPaywallEligible && trips.length >= FREE_TRIP_LIMIT;
+  const tripsForThisAccount = user?.createdAt
+    ? trips.filter((t) => t.startTime >= (user.createdAt as number)).length
+    : 0;
+  const freeTripsRemaining = Math.max(0, FREE_TRIP_LIMIT - tripsForThisAccount);
+  const isTrackLocked = isTrackPaywallEligible && tripsForThisAccount >= FREE_TRIP_LIMIT;
   const showFreeTripBanner = isTrackPaywallEligible;
 
   const handleUnlockTrack = useCallback(async () => {
