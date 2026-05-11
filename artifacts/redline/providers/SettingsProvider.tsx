@@ -27,6 +27,7 @@ interface Settings {
   theme: ThemeType;
   shareCardFields: ShareCardFields;
   shareCardPages: Record<ShareCardPage, boolean>;
+  cameraWarningSoundEnabled: boolean;
 }
 
 const SETTINGS_KEY = 'app_settings';
@@ -54,6 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'dark',
   shareCardFields: DEFAULT_SHARE_CARD_FIELDS,
   shareCardPages: DEFAULT_SHARE_CARD_PAGES,
+  cameraWarningSoundEnabled: true,
 };
 
 export const [SettingsProvider, useSettings] = createContextHook(() => {
@@ -128,6 +130,11 @@ export const [SettingsProvider, useSettings] = createContextHook(() => {
     void saveSettings(newSettings);
   }, [settings]);
 
+  const setCameraWarningSoundEnabled = useCallback((value: boolean) => {
+    const newSettings = { ...settings, cameraWarningSoundEnabled: value };
+    void saveSettings(newSettings);
+  }, [settings]);
+
   const setShareCardPage = useCallback((page: ShareCardPage, value: boolean) => {
     const otherPage = page === 'stats' ? 'route' : 'stats';
     if (!value && !settings.shareCardPages[otherPage]) return;
@@ -191,11 +198,12 @@ export const [SettingsProvider, useSettings] = createContextHook(() => {
     setTheme,
     setShareCardField,
     setShareCardPage,
+    setCameraWarningSoundEnabled,
     convertSpeed,
     convertDistance,
     getSpeedLabel,
     getDistanceLabel,
     getAccelerationLabel,
     getAccelerationShortLabel,
-  }), [settings, isLoading, colors, setSpeedUnit, setDistanceUnit, setTheme, setShareCardField, setShareCardPage, convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, getAccelerationShortLabel]);
+  }), [settings, isLoading, colors, setSpeedUnit, setDistanceUnit, setTheme, setShareCardField, setShareCardPage, setCameraWarningSoundEnabled, convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, getAccelerationShortLabel]);
 });

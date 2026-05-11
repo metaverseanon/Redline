@@ -15,6 +15,7 @@ import {
   SPEED_CAMERA_FETCH_RADIUS_KM,
   SPEED_CAMERA_REFETCH_THRESHOLD_KM,
 } from '@/constants/speedCameras';
+import { playCameraWarningSound } from '@/lib/cameraWarningSound';
 import { trpcClient } from '@/lib/trpc';
 import { useUser } from '@/providers/UserProvider';
 
@@ -656,6 +657,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
           warnedCameraIds.current.add(camera.id);
           const limitText = camera.speedLimit ? ` (${camera.speedLimit} km/h limit)` : '';
           console.log('[SPEED_CAMERA_WARNING] Approaching camera:', camera.id, camera.description);
+          playCameraWarningSound().catch(console.error);
           sendLocalNotification(
             '⚠️ Speed Camera Ahead',
             `${camera.description || 'Speed camera'} nearby${limitText}`,
@@ -797,6 +799,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
           warnedCameraIds.current.add(camera.id);
           const limitText = camera.speedLimit ? ` (${camera.speedLimit} km/h limit)` : '';
           console.log('[SPEED_CAMERA_WARNING] Approaching camera:', camera.id, camera.description);
+          playCameraWarningSound().catch(console.error);
           sendLocalNotification(
             '⚠️ Speed Camera Ahead',
             `${camera.description || 'Speed camera'} nearby${limitText}`,

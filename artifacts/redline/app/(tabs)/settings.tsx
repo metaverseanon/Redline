@@ -16,7 +16,7 @@ import { trpc, trpcClient } from '@/lib/trpc';
 import DailyCard from '@/components/DailyCard';
 
 export default function SettingsScreen() {
-  const { settings, colors, setSpeedUnit, setDistanceUnit, setTheme } = useSettings();
+  const { settings, colors, setSpeedUnit, setDistanceUnit, setTheme, setCameraWarningSoundEnabled } = useSettings();
   const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const { user, isAuthenticated, getCarDisplayName, updateSocialAccounts, signOut } = useUser();
   const { notificationsEnabled, registerForPushNotifications, disableNotifications } = useNotifications();
@@ -1052,6 +1052,28 @@ export default function SettingsScreen() {
                 />
               )
             )}
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.notificationItem}>
+            <View style={styles.notificationContent}>
+              <View style={styles.settingIconContainer}>
+                <ZapIcon size={20} color={colors.accent} />
+              </View>
+              <View style={styles.notificationTextContainer}>
+                <Text style={styles.settingLabel}>Camera Warning Sound</Text>
+                <Text style={styles.notificationDescription}>
+                  Play a beep when approaching a speed camera
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={settings.cameraWarningSoundEnabled}
+              onValueChange={setCameraWarningSoundEnabled}
+              trackColor={{ false: colors.border, true: colors.accent + '80' }}
+              thumbColor={settings.cameraWarningSoundEnabled ? colors.accent : colors.textLight}
+            />
           </View>
 
           <View style={styles.divider} />
