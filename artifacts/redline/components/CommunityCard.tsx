@@ -19,7 +19,7 @@ type PaywallResult = 'purchased' | 'restored' | 'cancelled' | 'error' | 'not_pre
 interface CommunityCardProps {
   userId: string;
   isSubscribed: boolean;
-  presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
+  presentPaywall: (source?: string) => void | Promise<PaywallResult> | Promise<void>;
   getLastPaywallError?: () => string | null;
   defaultExpanded?: boolean;
 }
@@ -53,7 +53,7 @@ export default function CommunityCard({ userId, isSubscribed, presentPaywall, ge
 
   const tryPaywall = useCallback(async () => {
     try {
-      const result = (await presentPaywall()) as PaywallResult | void;
+      const result = (await presentPaywall('community_card')) as PaywallResult | void;
       if (result === 'not_presented' || result === 'error') {
         const reason = getLastPaywallError?.();
         Alert.alert(

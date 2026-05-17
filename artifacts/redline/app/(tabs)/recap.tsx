@@ -76,7 +76,7 @@ export default function RecapScreen() {
 
   const handleProUpgradePress = useCallback(async () => {
     try {
-      const result = await presentPaywall();
+      const result = await presentPaywall('recap_locked');
       if (result === 'not_presented' || result === 'error') {
         const reason = getLastPaywallError?.();
         Alert.alert(

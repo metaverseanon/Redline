@@ -32,7 +32,7 @@ export default function SubscriptionSection() {
   }
 
   const handleUpgrade = async () => {
-    const result = await presentPaywall();
+    const result = await presentPaywall('subscription_section');
     if (result === "purchased") {
       Alert.alert("Welcome to RedLine Pro!", "Your subscription is now active.");
       void refetchCustomerInfo();

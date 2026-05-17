@@ -70,6 +70,22 @@ let initialized = false;
 let isConfigured = false;
 const configListeners = new Set<() => void>();
 
+type PaywallAnalyticsHandler = (event: string, properties?: Record<string, unknown>) => void;
+let paywallAnalyticsHandler: PaywallAnalyticsHandler | null = null;
+
+export function setPaywallAnalyticsHandler(handler: PaywallAnalyticsHandler | null) {
+  paywallAnalyticsHandler = handler;
+}
+
+function logPaywallEvent(event: string, properties?: Record<string, unknown>) {
+  console.log("[RC][analytics]", event, properties ?? {});
+  try {
+    paywallAnalyticsHandler?.(event, properties);
+  } catch (err) {
+    console.warn("[RC][analytics] handler threw:", err);
+  }
+}
+
 function notifyConfigChange() {
   for (const listener of configListeners) {
     try {
@@ -199,18 +215,25 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
     return false;
   }, [offeringsQuery.data, queryClient]);
 
+  const lastPaywallSourceRef = useRef<string | null>(null);
+
   const presentPaywall = useCallback(
-    async (): Promise<PaywallResult> => {
+    async (source: string = "unknown"): Promise<PaywallResult> => {
       lastPaywallErrorRef.current = null;
+      lastPaywallSourceRef.current = source;
+      logPaywallEvent("paywall_requested", { source, platform: Platform.OS });
+
       if (Platform.OS === "web") {
         lastPaywallErrorRef.current = "Web platform — paywall unavailable.";
         console.warn("[RC] Paywall UI unavailable on web");
+        logPaywallEvent("paywall_not_presented", { source, reason: "web" });
         return "not_presented";
       }
       if (!isConfigured) {
         lastPaywallErrorRef.current =
           "RevenueCat SDK is not configured. The RevenueCat API key is missing from this build. Ask the developer to set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS environment and rebuild.";
         console.warn("[RC] presentPaywall called before SDK configured");
+        logPaywallEvent("paywall_error", { source, reason: "sdk_not_configured" });
         return "error";
       }
 
@@ -219,9 +242,11 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         lastPaywallErrorRef.current =
           "No current offering is configured in RevenueCat. Ask the developer to set a Current Offering in the RevenueCat dashboard for the iOS app.";
         console.warn("[RC] No current offering available to present");
+        logPaywallEvent("paywall_error", { source, reason: "no_offering" });
         return "error";
       }
 
+      logPaywallEvent("paywall_presented", { source });
       return new Promise<PaywallResult>((resolve) => {
         const previous = paywallResolveRef.current;
         paywallResolveRef.current = resolve;
@@ -238,6 +263,8 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
     setPaywallVisible(false);
     const resolver = paywallResolveRef.current;
     paywallResolveRef.current = null;
+    const source = lastPaywallSourceRef.current ?? "unknown";
+    logPaywallEvent("paywall_closed", { source, result });
     if (result === "purchased" || result === "restored") {
       void queryClient.invalidateQueries({ queryKey: ["revenuecat", "customer-info"] });
     }

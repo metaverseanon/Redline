@@ -79,7 +79,7 @@ export default function SettingsScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (isProTheme(value) && !isSubscribed) {
-      const result = await presentPaywall();
+      const result = await presentPaywall('settings_upgrade');
       if (result === 'purchased' || result === 'restored') {
         setTheme(value);
         return;

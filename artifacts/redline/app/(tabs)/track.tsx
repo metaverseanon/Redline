@@ -12,7 +12,7 @@ import TripShareCard from '@/components/TripShareCard';
 import AuthGate from '@/components/AuthGate';
 
 const TRACK_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
-const FREE_TRIP_LIMIT = 3;
+const FREE_TRIP_LIMIT = 1;
 
 let MapView: React.ComponentType<any> | null = null;
 let Polyline: React.ComponentType<any> | null = null;
@@ -74,7 +74,7 @@ export default function TrackScreen() {
 
   const handleUnlockTrack = useCallback(async () => {
     try {
-      const result = await presentPaywall();
+      const result = await presentPaywall('track_locked');
       if (result === 'not_presented' || result === 'error') {
         const lastErr = getLastPaywallError?.();
         Alert.alert(

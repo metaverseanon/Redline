@@ -38,7 +38,7 @@ interface FriendsBoardsModalProps {
   onClose: () => void;
   userId: string;
   isSubscribed: boolean;
-  presentPaywall: () => void | Promise<PaywallResult> | Promise<void>;
+  presentPaywall: (source?: string) => void | Promise<PaywallResult> | Promise<void>;
   getLastPaywallError?: () => string | null;
 }
 
@@ -182,7 +182,7 @@ export default function FriendsBoardsModal({
     try {
       onClose();
       await new Promise((resolve) => setTimeout(resolve, Platform.OS === 'ios' ? 450 : 250));
-      const result = (await presentPaywall()) as PaywallResult | void;
+      const result = (await presentPaywall('friends_boards')) as PaywallResult | void;
       if (result === 'not_presented' || result === 'error') {
         const reason = getLastPaywallError?.();
         Alert.alert(

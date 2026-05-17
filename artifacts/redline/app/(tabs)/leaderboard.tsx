@@ -892,7 +892,7 @@ export default function LeaderboardScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     try {
-      const result = await presentPaywall();
+      const result = await presentPaywall('leaderboard_locked');
       if (result === 'not_presented' || result === 'error') {
         const lastErr = getLastPaywallError?.();
         Alert.alert(

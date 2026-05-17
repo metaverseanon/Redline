@@ -14,6 +14,8 @@ import { SettingsProvider } from "@/providers/SettingsProvider";
 import { UserProvider, useUser } from "@/providers/UserProvider";
 import { NotificationProvider, useNotifications } from "@/providers/NotificationProvider";
 import StreakPopup from "@/components/StreakPopup";
+import OnboardingPaywallTrigger from "@/components/OnboardingPaywallTrigger";
+import PaywallAnalyticsBridge from "@/components/PaywallAnalyticsBridge";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import * as Location from 'expo-location';
@@ -441,6 +443,8 @@ export default function RootLayout() {
               <AnalyticsProvider>
               <NotificationProvider>
                 <AnalyticsSync />
+                <PaywallAnalyticsBridge />
+                <OnboardingPaywallTrigger />
                 <PushTokenSync />
                 <LocationSync />
                 <AchievementProvider>
