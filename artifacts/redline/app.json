@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.redline-app",
-      "buildNumber": "29",
+      "buildNumber": "30",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
         "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
@@ -30,6 +30,7 @@
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
         "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
         "NSPhotoLibraryAddUsageDescription": "Allow $(PRODUCT_NAME) to save photos.",
+        "NSUserTrackingUsageDescription": "This identifier will be used to measure ad performance and deliver personalized ads.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -99,6 +100,12 @@
           "devKey": "FPDaeC6wQQ2zNXbRLgberm",
           "appleAppId": "6758342404",
           "isDebug": false
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier will be used to measure ad performance and deliver personalized ads."
         }
       ]
     ],

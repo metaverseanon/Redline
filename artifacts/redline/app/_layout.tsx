@@ -18,6 +18,7 @@ import OnboardingPaywallTrigger from "@/components/OnboardingPaywallTrigger";
 import PaywallAnalyticsBridge from "@/components/PaywallAnalyticsBridge";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
+import { initializeTikTok, tiktokIdentify } from "@/lib/tiktok";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -36,6 +37,10 @@ try {
 } catch (err: any) {
   console.warn('[RC] Initialization failed:', err?.message ?? err);
 }
+
+void initializeTikTok().catch((err) => {
+  console.warn('[TIKTOK] Initialization failed:', err?.message ?? err);
+});
 
 if (Platform.OS !== 'web') {
   try {
@@ -235,8 +240,9 @@ function AnalyticsSync() {
     if (user?.id) {
       identify(user.id);
       track('user_signed_in', { userId: user.id });
+      void tiktokIdentify(user.id, user.email);
     }
-  }, [user?.id, identify, track]);
+  }, [user?.id, user?.email, identify, track]);
 
   return null;
 }

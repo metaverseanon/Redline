@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
+import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -181,6 +182,22 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
     mutationFn: async (packageToPurchase: any) => {
       if (!enabled) throw new Error("Purchases unavailable on this platform");
       const { customerInfo } = await PurchasesModule.purchasePackage(packageToPurchase);
+      try {
+        const product = packageToPurchase?.product ?? {};
+        const value = Number(product?.price ?? 0);
+        const currency = String(product?.currencyCode ?? "USD");
+        const productId = String(product?.identifier ?? packageToPurchase?.identifier ?? "unknown");
+        const orderId =
+          customerInfo?.originalAppUserId ??
+          customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis?.toString();
+        if (value > 0) {
+          void tiktokTrackSubscribe({ value, currency, productId, orderId });
+          void tiktokTrackPurchase({ value, currency, productId, orderId });
+        }
+        logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
+      } catch (err) {
+        console.warn("[RC] post-purchase tiktok tracking failed:", err);
+      }
       return customerInfo;
     },
     onSuccess: () => {
