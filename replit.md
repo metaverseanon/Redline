@@ -40,6 +40,11 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - `EXPO_PUBLIC_REVENUECAT_TEST_API_KEY` — RevenueCat public **test** key, used in
   Expo Go / dev builds (preview API mode mocks purchases). For production builds
   set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` / `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY`.
+- `EXPO_PUBLIC_TIKTOK_APP_ID` / `EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN` — TikTok
+  Business SDK credentials from TikTok Events Manager (the iOS app source). Set
+  in `eas.json` production `env` so they're baked into production builds. The
+  access token is required client-side by TikTok's SDK design; treat as
+  semi-public and rotate from Events Manager.
 
 ## Key commands
 
@@ -63,6 +68,19 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   the real native module unchanged. Any new map UI must still be guarded with
   `Platform.OS !== 'web'` checks at the render site so the stub is never relied
   on for actual map functionality.
+- **TikTok Business SDK (native ad attribution):** `react-native-tiktok-business-sdk`
+  initialized at app boot in `_layout.tsx` alongside AppsFlyer. iOS requests App
+  Tracking Transparency permission via `expo-tracking-transparency` before SDK
+  init (required for install attribution on iOS 14+). `NSUserTrackingUsageDescription`
+  set in `app.json` infoPlist, plugin registered. Wrapper at `lib/tiktok.ts`
+  exposes `initializeTikTok()`, `tiktokIdentify(userId, email)`,
+  `tiktokTrackRegistration()`, `tiktokTrackLogin()`, `tiktokTrackSubscribe()`,
+  `tiktokTrackPurchase()`. Events wired: identify on every authenticated session
+  (`_layout.tsx`), Subscribe + Purchase on successful RevenueCat purchase
+  (`lib/revenuecat.tsx` `purchaseMutation`) with real price/currency/productId
+  pulled from the StoreKit package. Native module is lazily required so web and
+  Expo Go cleanly no-op.
+
 - **Subscriptions (RevenueCat):** integrated via `react-native-purchases` and
   `react-native-purchases-ui`. The SDK is initialized at app boot (`_layout.tsx`)
   and identified to the backend user inside `UserProvider` via `SubscriptionProvider`.
