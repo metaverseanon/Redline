@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 
 const TIKTOK_APP_ID = process.env.EXPO_PUBLIC_TIKTOK_APP_ID;
 const TIKTOK_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN;
@@ -52,7 +51,7 @@ export async function initializeTikTok(): Promise<void> {
       }
     }
 
-    const debug = Constants.executionEnvironment !== 'standalone';
+    const debug = __DEV__;
     await TikTokBusiness.initializeSdk(
       BUNDLE_ID,
       TIKTOK_APP_ID,
@@ -61,6 +60,14 @@ export async function initializeTikTok(): Promise<void> {
     );
     initialized = true;
     console.log('[TIKTOK] SDK initialized (debug=', debug, ')');
+    try {
+      if (typeof TikTokBusiness.startTrack === 'function') {
+        await TikTokBusiness.startTrack();
+        console.log('[TIKTOK] startTrack called');
+      }
+    } catch (e) {
+      console.warn('[TIKTOK] startTrack failed:', e);
+    }
   } catch (err) {
     console.error('[TIKTOK] initialize failed:', err);
   } finally {
