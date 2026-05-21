@@ -190,10 +190,12 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         const orderId =
           customerInfo?.originalAppUserId ??
           customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis?.toString();
-        if (value > 0) {
-          void tiktokTrackSubscribe({ value, currency, productId, orderId });
-          void tiktokTrackPurchase({ value, currency, productId, orderId });
-        }
+        // Fire even if price comes back as 0 (StoreKit sometimes returns 0 in
+        // sandbox / before product metadata hydrates) — TikTok still needs the
+        // event for attribution. Use a safe fallback value.
+        const safeValue = value > 0 ? value : 0.01;
+        void tiktokTrackSubscribe({ value: safeValue, currency, productId, orderId });
+        void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
         logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
       } catch (err) {
         console.warn("[RC] post-purchase tiktok tracking failed:", err);
