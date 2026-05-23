@@ -3,7 +3,7 @@
     "name": "RedLine",
     "slug": "redline",
     "owner": "tonix_o",
-    "version": "1.9.13",
+    "version": "1.9.14",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "redline",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.redline-app",
-      "buildNumber": "42",
+      "buildNumber": "43",
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
         "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
