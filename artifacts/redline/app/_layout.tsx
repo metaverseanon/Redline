@@ -18,7 +18,7 @@ import OnboardingPaywallTrigger from "@/components/OnboardingPaywallTrigger";
 import PaywallAnalyticsBridge from "@/components/PaywallAnalyticsBridge";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
-import { initializeTikTok, tiktokIdentify } from "@/lib/tiktok";
+import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -38,9 +38,11 @@ try {
   console.warn('[RC] Initialization failed:', err?.message ?? err);
 }
 
-void initializeTikTok().catch((err) => {
-  console.warn('[TIKTOK] Initialization failed:', err?.message ?? err);
-});
+void initializeTikTok()
+  .then(() => tiktokTrackAppOpen())
+  .catch((err) => {
+    console.warn('[TIKTOK] Initialization failed:', err?.message ?? err);
+  });
 
 if (Platform.OS !== 'web') {
   try {

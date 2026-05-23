@@ -1,0 +1,101 @@
+Fix the TikTok Business SDK integration in the active RedLine app code.
+
+IMPORTANT:
+- The active app code is in `artifacts/redline/`
+- Do NOT patch duplicate files outside `artifacts/redline/`
+- Focus only on TikTok SDK integration and event delivery
+- Do NOT touch unrelated app logic
+
+Problem:
+TikTok is not receiving any data at all:
+- no install attribution
+- no app open
+- no subscribe/purchase events
+
+That means the SDK initialization / app-event wiring is likely wrong, incomplete, or using the wrong API shape.
+
+Your task:
+Audit and fix the TikTok Business SDK implementation in the active app.
+
+Files to inspect first:
+- `artifacts/redline/app/_layout.tsx`
+- `artifacts/redline/lib/tiktok.ts`
+- `artifacts/redline/app.json`
+- any TikTok plugin/config files under `artifacts/redline/plugins/`
+
+What to fix:
+
+1. Verify TikTok SDK is initialized correctly at app startup
+- initialization must happen in the active app boot flow
+- it must not silently no-op in production builds
+- keep logging for init success/failure
+
+2. Verify ATT flow on iOS
+- request tracking permission before/around TikTok SDK init where required
+- keep logs for ATT status
+- confirm `NSUserTrackingUsageDescription` exists in `artifacts/redline/app.json`
+
+3. Verify the correct SDK API usage
+- confirm whether `trackEvent(...)` and `trackContentEvent(...)` are being called with the correct argument order and property format for `react-native-tiktok-business-sdk`
+- if current usage is wrong, replace it with the correct one
+- do not guess — inspect the installed package/types if needed
+
+4. Make app-open tracking explicit
+Right now TikTok may not be getting any open event.
+Add a dedicated app-open tracking function in `artifacts/redline/lib/tiktok.ts`, for example:
+- `tiktokTrackLaunch()` or `tiktokTrackAppOpen()`
+
+Call it once from app startup in the active root layout after SDK init / app mount.
+
+5. Keep / improve these TikTok functions:
+- initializeTikTok()
+- tiktokIdentify(userId, email)
+- tiktokTrackRegistration()
+- tiktokTrackLogin()
+- tiktokTrackSubscribe(...)
+- tiktokTrackPurchase(...)
+
+6. Make the event payloads consistent and safe
+For subscribe/purchase:
+- include value
+- include currency
+- include productId
+- include orderId if available
+- log exactly what is being sent
+
+7. Do not silently swallow failures
+- keep `console.log` for success
+- keep `console.warn` / `console.error` for failures
+- if the SDK is unavailable, log that clearly
+
+8. Verify environment/config
+Check that production config actually includes:
+- `EXPO_PUBLIC_TIKTOK_APP_ID`
+- `EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN`
+
+If something is missing or only present in some profiles, explain it.
+
+9. After fixing, show me:
+- exact files changed
+- diff
+- explanation of what was wrong
+- whether the issue was:
+  - bad SDK init
+  - wrong event API usage
+  - missing app-open event
+  - config/env issue
+  - iOS ATT issue
+  - or multiple of the above
+
+Implementation guidance:
+- prefer fixing the existing `artifacts/redline/lib/tiktok.ts`
+- keep the code production-safe for native iOS builds
+- do not remove existing RevenueCat purchase flow; just make TikTok tracking correct
+
+Extra requirement:
+If you find that the current TikTok SDK method names / enums / property keys are wrong, correct them to the exact SDK-supported format instead of preserving broken usage.
+
+At the end, summarize:
+1. what was broken
+2. what you changed
+3. what I should test on device logs to confirm it works

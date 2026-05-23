@@ -117,6 +117,23 @@ export async function tiktokTrackLogin(): Promise<void> {
   }
 }
 
+// The TikTok SDK auto-emits LaunchAPP on cold start. We additionally fire it
+// explicitly after init so that warm boots and any init-race scenarios still
+// land an event in TikTok Events Manager.
+export async function tiktokTrackAppOpen(): Promise<void> {
+  const ready = await ensureReady();
+  if (!ready || !TikTokBusiness || !TikTokEventName) {
+    console.warn('[TIKTOK] trackAppOpen skipped — SDK not ready', { ready, hasSdk: !!TikTokBusiness });
+    return;
+  }
+  try {
+    await TikTokBusiness.trackEvent(TikTokEventName.LAUNCH_APP);
+    console.log('[TIKTOK] tracked LaunchAPP');
+  } catch (err) {
+    console.warn('[TIKTOK] trackAppOpen failed:', err);
+  }
+}
+
 export async function tiktokTrackSubscribe(opts: {
   value: number;
   currency: string;
