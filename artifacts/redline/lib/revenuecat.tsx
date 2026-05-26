@@ -187,6 +187,7 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         const value = Number(product?.price ?? 0);
         const currency = String(product?.currencyCode ?? "USD");
         const productId = String(product?.identifier ?? packageToPurchase?.identifier ?? "unknown");
+        const productName = String(product?.title ?? product?.description ?? productId);
         const orderId =
           customerInfo?.originalAppUserId ??
           customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis?.toString();
@@ -194,7 +195,7 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         // sandbox / before product metadata hydrates) — TikTok still needs the
         // event for attribution. Use a safe fallback value.
         const safeValue = value > 0 ? value : 0.01;
-        void tiktokTrackSubscribe({ value: safeValue, currency, productId, orderId });
+        void tiktokTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
         void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
         logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
       } catch (err) {

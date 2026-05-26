@@ -1157,6 +1157,52 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {(() => {
+          const ADMIN_EMAILS = ['info@redlineapp.io', 'tonix.o@gmail.com'];
+          const isAdmin = !!user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+          if (!isAdmin) return null;
+          return (
+            <>
+              <Text style={styles.sectionTitle}>Diagnostics (admin)</Text>
+              <View style={styles.settingsCard}>
+                <TouchableOpacity
+                  style={styles.linkItem}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    try {
+                      const t = await import('@/lib/tiktok');
+                      await t.tiktokTrackCompleteTutorial();
+                      await t.tiktokTrackSubscribe({
+                        value: 9.99,
+                        currency: 'USD',
+                        productId: 'test_monthly',
+                        productName: 'RedLine Pro (Test)',
+                        quantity: 1,
+                        orderId: `test_${Date.now()}`,
+                      });
+                      Alert.alert(
+                        'TikTok test events sent',
+                        'Sent CompleteTutorial + Subscribe ($9.99 USD).\n\nCheck TikTok Events Manager → Test Events in 1–5 min.',
+                      );
+                    } catch (e: any) {
+                      Alert.alert('TikTok test failed', String(e?.message ?? e));
+                    }
+                  }}
+                >
+                  <View style={styles.linkContent}>
+                    <View style={styles.settingIconContainer}>
+                      <ZapIcon size={20} color={colors.accent} />
+                    </View>
+                    <Text style={styles.linkText}>Send TikTok Test Events</Text>
+                  </View>
+                  <ChevronRight size={20} color={colors.textLight} />
+                </TouchableOpacity>
+              </View>
+            </>
+          );
+        })()}
+
         {isAuthenticated && (
           <>
             <Text style={styles.sectionTitle}>Danger Zone</Text>

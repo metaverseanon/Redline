@@ -106,6 +106,23 @@ export async function tiktokTrackRegistration(): Promise<void> {
   }
 }
 
+export async function tiktokTrackCompleteTutorial(): Promise<void> {
+  const ready = await ensureReady();
+  if (!ready || !TikTokBusiness || !TikTokEventName) {
+    console.warn('[TIKTOK] trackCompleteTutorial skipped — SDK not ready', { ready, hasSdk: !!TikTokBusiness });
+    return;
+  }
+  try {
+    await TikTokBusiness.trackEvent(TikTokEventName.COMPLETE_TUTORIAL);
+    console.log('[TIKTOK] tracked CompleteTutorial');
+    if (typeof TikTokBusiness.flush === 'function') {
+      try { await TikTokBusiness.flush(); } catch {}
+    }
+  } catch (err) {
+    console.warn('[TIKTOK] trackCompleteTutorial failed:', err);
+  }
+}
+
 export async function tiktokTrackLogin(): Promise<void> {
   const ready = await ensureReady();
   if (!ready || !TikTokBusiness || !TikTokEventName) return;
@@ -138,6 +155,8 @@ export async function tiktokTrackSubscribe(opts: {
   value: number;
   currency: string;
   productId: string;
+  productName?: string;
+  quantity?: number;
   orderId?: string;
 }): Promise<void> {
   const ready = await ensureReady();
@@ -153,10 +172,11 @@ export async function tiktokTrackSubscribe(opts: {
       {
         value: opts.value,
         currency: opts.currency,
-        description: opts.productId,
+        description: opts.productName ?? opts.productId,
+        query: opts.productId,
       },
     );
-    console.log('[TIKTOK] tracked Subscribe', opts);
+    console.log('[TIKTOK] tracked Subscribe', { ...opts, quantity: opts.quantity ?? 1 });
     if (typeof TikTokBusiness.flush === 'function') {
       try { await TikTokBusiness.flush(); } catch {}
     }

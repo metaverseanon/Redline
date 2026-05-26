@@ -1,0 +1,71 @@
+task: "Set up TikTok App Events SDK for iOS app install tracking"
+
+context:
+  app_uses: "RevenueCat for subscriptions"
+  attribution_setup: "TikTok App Events SDK, not an MMP"
+  source_of_truth: "RevenueCat remains the source of truth for subscription status"
+  assumption: "TikTok app setup is already complete in TikTok Events Manager"
+  docs_to_read:
+    - "https://business-api.tiktok.com/portal/docs/tiktok-app-events-sdk-overview/v1.3"
+    - "https://business-api.tiktok.com/portal/docs/supported-app-events/v1.3"
+
+tiktok_credentials:
+  app_id: "6758342404"
+  tiktok_app_id: "7619279783713128455"
+  app_secret: "wOVuvJXQT1OptTciQADoJwKCjd5+ego+4ndSLcSBqx5hsQx1bDzTvxbmRFThHtE4P62WEQMN2+X8zzr/wMnrqg=="
+  note: "Use secure config/env/native secrets where possible. Do not expose real credentials in public code."
+
+instructions:
+  - "Read the TikTok App Events SDK overview and supported events docs linked in context before implementing."
+  - "Inspect the app structure first and identify whether this is a native iOS app, bare React Native app, Expo app with native iOS folders/prebuild, or managed Expo app without native folders."
+  - "If this is a native iOS app, install the TikTok Business SDK using CocoaPods or the project’s existing native dependency system."
+  - "If this is a native iOS app, initialize the TikTok SDK in the iOS app launch path, usually AppDelegate.swift."
+  - "If this is a bare React Native app, install the TikTok Business SDK in the iOS project using CocoaPods."
+  - "If this is a bare React Native app, create or use a native module that exposes TikTok event tracking to JavaScript."
+  - "If this is a bare React Native app, initialize the TikTok SDK in AppDelegate.swift or AppDelegate.mm."
+  - "If this is an Expo app with native iOS folders or Expo prebuild, do not assume a normal npm package is enough."
+  - "If this is an Expo app with native iOS folders or Expo prebuild, add the TikTok Business SDK to the native iOS project."
+  - "If this is an Expo app with native iOS folders or Expo prebuild, create an Expo native module wrapper, for example TikTokBridge."
+  - "The Expo native wrapper should expose trackEvent(eventName, properties), identify(...), logout(), and isInitialized()."
+  - "In the native iOS wrapper, trackEvent should create a TikTok event, attach properties, and send it through the TikTok Business SDK."
+  - "In JS/TS, create an analytics wrapper around the native module so app screens do not call native SDK code directly."
+  - "If this is a managed Expo app without native iOS folders, explain that TikTok’s native SDK requires native code."
+  - "If this is a managed Expo app without native iOS folders, recommend Expo prebuild, an EAS development build, or a config plugin/native module approach."
+  - "Do not claim the TikTok native SDK can be fully verified inside Expo Go."
+  - "Initialize TikTok using the provided placeholders: <TIKTOK_APP_ID>, <TIKTOK_IOS_APP_ID>, and <TIKTOK_APP_SECRET>."
+  - "Add tracking for onboarding completion as CompleteTutorial."
+  - "Add tracking for successful RevenueCat subscriptions as Subscribe."
+  - "When tracking Subscribe, include properties where available: value, currency, product ID, product name, and quantity."
+  - "Do not use TikTok to determine subscription access. Keep RevenueCat as the subscription authority for paywalls."
+  - "Add a simple debug/test buttons to fire the Subscription event so the setup can be verified in TikTok Events Manager."
+  - "Warn if another SDK or MMP is already managing SKAN, because only one tool should update SKAN conversion values."
+  - "Keep the implementation minimal and avoid unrelated refactors."
+
+manual_tiktok_steps_to_report_back:
+  - "Confirm the TikTok app event source is connected to the app."
+  - "Confirm the SDK credentials used match the app event source."
+  - "Confirm test events appear in TikTok Events Manager."
+  - "Confirm SKAdNetwork is configured if this is an iOS acquisition campaign."
+  - "Confirm TikTok Ads Manager targets installs first, then optimizes for in-app purchase events."
+  - "Depending on setup, advise the user to remove the debug buttons when submitting app to app store if debug modes are not possible. Don't let the user ship the app with a debug button visible to real production users."
+
+expected_events:
+  onboarding_complete:
+    event_name: "CompleteTutorial"
+    purpose: "Early quality signal after the user completes onboarding and reaches the paywall"
+
+  subscribe:
+    event_name: "Subscribe"
+    purpose: "Subscription signal after RevenueCat confirms a successful subscription"
+    properties:
+      value: "Subscription price"
+      currency: "Currency code, for example USD or GBP"
+      product_id: "RevenueCat/App Store product identifier"
+      product_name: "Subscription product name"
+      quantity: 1
+
+final_response_requirements:
+  - "Summarize files changed."
+  - "List events added."
+  - "List manual TikTok dashboard steps still required: check the app verification and subscribe event is visible in overview"
+  - "Explain how to test the setup: press button once!"

@@ -1,0 +1,1 @@
+- [EAS background builds get killed](eas-background-builds.md) — backgrounded `eas build` (nohup+disown) is killed by Replit sandbox after parent shell exits; run foreground with `timeout` so EAS finishes uploading before the shell ends.

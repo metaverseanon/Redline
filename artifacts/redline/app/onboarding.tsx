@@ -221,6 +221,13 @@ export default function OnboardingScreen() {
       console.warn('[ONBOARDING] Failed to save completion:', e);
     }
 
+    try {
+      const { tiktokTrackCompleteTutorial } = await import('@/lib/tiktok');
+      void tiktokTrackCompleteTutorial();
+    } catch (e) {
+      console.warn('[ONBOARDING] tiktok CompleteTutorial failed:', e);
+    }
+
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 300,
