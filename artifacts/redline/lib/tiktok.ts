@@ -58,7 +58,11 @@ export async function initializeTikTok(): Promise<void> {
         }
       }
 
-      const debug = __DEV__;
+      // Debug mode is required for TikTok's "APP SDK Test Tool" to capture
+      // events. __DEV__ is false in TestFlight/production builds, so allow
+      // forcing it on via env (set EXPO_PUBLIC_TIKTOK_DEBUG=true to verify a
+      // production build with the Test Tool, then remove for the real release).
+      const debug = __DEV__ || process.env.EXPO_PUBLIC_TIKTOK_DEBUG === 'true';
       await TikTokBusiness.initializeSdk(
         TIKTOK_APP_STORE_ID,
         TIKTOK_APP_ID,
