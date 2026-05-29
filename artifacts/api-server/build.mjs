@@ -23,6 +23,7 @@ async function buildAll() {
     external: [
       "*.node",
       "fsevents",
+      "@napi-rs/canvas",
     ],
     sourcemap: "linked",
     banner: {

@@ -10,7 +10,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
-import { X, Download, Share2 } from 'lucide-react-native';
+import { X, Download, Share2, Video as VideoIcon } from 'lucide-react-native';
 import Svg, { Polyline } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
@@ -26,6 +26,7 @@ interface TripShareCardProps {
   visible: boolean;
   onClose: () => void;
   timePeriod?: TimePeriod;
+  onReplay?: () => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -34,7 +35,7 @@ const MAP_HEIGHT = 240;
 
 const LOGO_URL = 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/9ts3c4tgfcrqhgxwwrqfk';
 
-export default function TripShareCard({ trip, visible, onClose }: TripShareCardProps) {
+export default function TripShareCard({ trip, visible, onClose, onReplay }: TripShareCardProps) {
   const viewShotRef = useRef<ViewShot>(null);
   const { user } = useUser();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, settings } = useSettings();
@@ -286,6 +287,17 @@ export default function TripShareCard({ trip, visible, onClose }: TripShareCardP
               <Text style={styles.actionButtonText}>Share</Text>
             </TouchableOpacity>
           </View>
+
+          {onReplay && (
+            <TouchableOpacity
+              style={styles.replayButton}
+              onPress={onReplay}
+              activeOpacity={0.85}
+            >
+              <VideoIcon size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Replay Video</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -420,6 +432,18 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     backgroundColor: '#00C853',
+  },
+  replayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF2D2D',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    gap: 8,
+    width: CARD_WIDTH,
+    marginTop: 12,
   },
   actionButtonText: {
     fontFamily: 'Orbitron_600SemiBold',

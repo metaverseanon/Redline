@@ -9,6 +9,7 @@ import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
 import { useSubscription } from '@/lib/revenuecat';
 import TripShareCard from '@/components/TripShareCard';
+import DriveReplayModal from '@/components/DriveReplayModal';
 import AuthGate from '@/components/AuthGate';
 
 const TRACK_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
@@ -57,6 +58,7 @@ export default function TrackScreen() {
   const { user } = useUser();
   const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const [showShareCard, setShowShareCard] = useState(false);
+  const [showReplay, setShowReplay] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('standard');
   const mapRef = useRef<any>(null);
   const toggleAnim = useRef(new Animated.Value(0)).current;
@@ -532,7 +534,23 @@ export default function TrackScreen() {
       {viewMode === 'map' && canShowMap ? renderMapView() : renderStandardView()}
 
       {lastSavedTrip && (
-        <TripShareCard trip={lastSavedTrip} visible={showShareCard} onClose={handleCloseShareCard} />
+        <TripShareCard
+          trip={lastSavedTrip}
+          visible={showShareCard}
+          onClose={handleCloseShareCard}
+          onReplay={() => {
+            setShowShareCard(false);
+            setShowReplay(true);
+          }}
+        />
+      )}
+
+      {lastSavedTrip && (
+        <DriveReplayModal
+          trip={lastSavedTrip}
+          visible={showReplay}
+          onClose={() => setShowReplay(false)}
+        />
       )}
 
       <AuthGate

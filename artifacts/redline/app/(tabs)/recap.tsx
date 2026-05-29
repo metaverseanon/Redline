@@ -26,6 +26,7 @@ import {
   Navigation,
   MapPin,
   Share2,
+  Video as VideoIcon,
 } from 'lucide-react-native';
 let MapView: any = null;
 let Polyline: any = null;
@@ -41,6 +42,7 @@ import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import AnimatedCard from '@/components/AnimatedCard';
 import WeeklyRecapCard from '@/components/WeeklyRecapCard';
+import DriveReplayModal from '@/components/DriveReplayModal';
 import ProBadge from '@/components/ProBadge';
 import { TripStats } from '@/types/trip';
 import { ThemeColors } from '@/constants/colors';
@@ -94,6 +96,7 @@ export default function RecapScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('recent');
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('weekly');
   const [showWeeklyRecap, setShowWeeklyRecap] = useState<boolean>(false);
+  const [showReplay, setShowReplay] = useState<boolean>(false);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -367,6 +370,14 @@ export default function RecapScreen() {
               <Zap size={20} color={colors.accent} />
             </View>
           </View>
+          <TouchableOpacity
+            style={styles.replayButton}
+            onPress={() => setShowReplay(true)}
+            activeOpacity={0.85}
+          >
+            <VideoIcon size={18} color="#FFFFFF" />
+            <Text style={styles.replayButtonText}>REPLAY VIDEO</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.accentCard}>
@@ -875,6 +886,12 @@ export default function RecapScreen() {
         weekStart={weekRange.start}
         weekEnd={weekRange.end}
       />
+
+      <DriveReplayModal
+        trip={lastTrip}
+        visible={showReplay}
+        onClose={() => setShowReplay(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -975,6 +992,22 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: 'Orbitron_600SemiBold',
     color: colors.textLight,
     letterSpacing: 1,
+  },
+  replayButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#FF2D2D',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 16,
+  },
+  replayButtonText: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   headerDate: {
     fontSize: 26,

@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { appRouter } from "./trpc/app-router";
 import { createContext } from "./trpc/create-context";
 import { getDbConfig } from "./trpc/db";
+import { renderReplayVideo, ReplayRenderInputSchema } from "./replay/render";
 
 const BACKEND_VERSION = "1.2.0";
 console.log(`[BACKEND] Starting RedLine API v${BACKEND_VERSION}`);
@@ -25,6 +26,48 @@ app.use("/trpc/*", trpcHandler);
 app.get("/", (c) => c.json({ status: "ok", message: "API is running", version: BACKEND_VERSION }));
 app.get("/api", (c) => c.json({ status: "ok", message: "API is running", version: BACKEND_VERSION }));
 app.get("/api/healthz", (c) => c.json({ status: "ok", version: BACKEND_VERSION }));
+
+const MAX_CONCURRENT_RENDERS = 2;
+let activeRenders = 0;
+
+const replayRenderHandler = async (c: any) => {
+  if (activeRenders >= MAX_CONCURRENT_RENDERS) {
+    return c.json({ error: "Server busy, try again shortly" }, 503, { "Retry-After": "5" });
+  }
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const parsed = ReplayRenderInputSchema.safeParse(body);
+  if (!parsed.success) {
+    console.warn("[REPLAY] Invalid render input:", parsed.error.flatten());
+    return c.json({ error: "Invalid replay input", details: parsed.error.flatten() }, 400);
+  }
+  activeRenders++;
+  try {
+    console.log("[REPLAY] Rendering video, points:", parsed.data.route.length, "watermark:", !!parsed.data.watermark);
+    const mp4 = await renderReplayVideo(parsed.data);
+    console.log("[REPLAY] Render complete, bytes:", mp4.length);
+    return new Response(new Uint8Array(mp4), {
+      status: 200,
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Length": String(mp4.length),
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("[REPLAY] Render failed:", err);
+    return c.json({ error: "Render failed", message: err instanceof Error ? err.message : "unknown" }, 500);
+  } finally {
+    activeRenders--;
+  }
+};
+
+app.post("/api/replay/render", replayRenderHandler);
+app.post("/replay/render", replayRenderHandler);
 
 app.get("/health", (c) => {
   const dbEndpoint =
