@@ -1,1 +1,2 @@
 - [EAS background builds get killed](eas-background-builds.md) — backgrounded `eas build` (nohup+disown) is killed by Replit sandbox after parent shell exits; run foreground with `timeout` so EAS finishes uploading before the shell ends.
+- [TikTok SDK appId is App Store ID](tiktok-sdk-appid.md) — TikTokConfig appId must be the numeric iOS App Store ID, NOT the bundle identifier; wrong value makes events silently never match the TikTok app source.

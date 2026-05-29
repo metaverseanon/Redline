@@ -2,7 +2,11 @@ import { Platform } from 'react-native';
 
 const TIKTOK_APP_ID = process.env.EXPO_PUBLIC_TIKTOK_APP_ID;
 const TIKTOK_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN;
-const BUNDLE_ID = 'app.rork.redline-app';
+// TikTokConfig(accessToken:appId:tiktokAppId:) expects `appId` to be the iOS
+// App Store numeric ID (the "App ID" shown in TikTok Events Manager), NOT the
+// bundle identifier. Passing the bundle id here makes events fail to match the
+// TikTok app source. Overridable via env; defaults to RedLine's App Store ID.
+const TIKTOK_APP_STORE_ID = process.env.EXPO_PUBLIC_TIKTOK_APP_STORE_ID ?? '6758342404';
 
 let TikTokBusiness: any = null;
 let TikTokEventName: any = null;
@@ -56,7 +60,7 @@ export async function initializeTikTok(): Promise<void> {
 
       const debug = __DEV__;
       await TikTokBusiness.initializeSdk(
-        BUNDLE_ID,
+        TIKTOK_APP_STORE_ID,
         TIKTOK_APP_ID,
         TIKTOK_ACCESS_TOKEN,
         debug,
