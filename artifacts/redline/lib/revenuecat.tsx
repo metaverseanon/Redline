@@ -188,9 +188,14 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         const currency = String(product?.currencyCode ?? "USD");
         const productId = String(product?.identifier ?? packageToPurchase?.identifier ?? "unknown");
         const productName = String(product?.title ?? product?.description ?? productId);
-        const orderId =
-          customerInfo?.originalAppUserId ??
-          customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis?.toString();
+        // TikTok uses eventId for DEDUPLICATION — identical eventIds are dropped.
+        // Never use originalAppUserId here (it's the constant RC user id, so every
+        // repeat Subscribe would be deduped and silently never record). Build a
+        // unique id per purchase: latest purchase timestamp (unique per txn) plus
+        // a random suffix so even same-millisecond retries are distinct.
+        const purchaseMillis =
+          customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis;
+        const orderId = `${productId}_${purchaseMillis ?? Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         // Fire even if price comes back as 0 (StoreKit sometimes returns 0 in
         // sandbox / before product metadata hydrates) — TikTok still needs the
         // event for attribution. Use a safe fallback value.
