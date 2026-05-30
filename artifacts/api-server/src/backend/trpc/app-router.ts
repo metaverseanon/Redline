@@ -11,6 +11,7 @@ import { privateLeaderboardsRouter } from "./routes/private-leaderboards";
 import { communitiesRouter } from "./routes/communities";
 import { speedCamerasRouter } from "./routes/speed-cameras";
 import { coachRouter } from "./routes/coach";
+import { musicRouter } from "./routes/music";
 
 console.log("[ROUTER] Initializing app router v1.2");
 
@@ -27,6 +28,7 @@ export const appRouter = createTRPCRouter({
   communities: communitiesRouter,
   speedCameras: speedCamerasRouter,
   coach: coachRouter,
+  music: musicRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -45,11 +45,13 @@ import WeeklyRecapCard from '@/components/WeeklyRecapCard';
 import DriveReplayModal from '@/components/DriveReplayModal';
 import AICoachCard from '@/components/AICoachCard';
 import ProBadge from '@/components/ProBadge';
-import { TripStats } from '@/types/trip';
+import SoundtrackBadge from '@/components/SoundtrackBadge';
+import TrackPickerModal from '@/components/TrackPickerModal';
+import { TripStats, Soundtrack } from '@/types/trip';
 import { ThemeColors } from '@/constants/colors';
 import { useSubscription } from '@/lib/revenuecat';
 import { computeProMetrics } from '@/lib/proMetrics';
-import { Lock, Sparkles } from 'lucide-react-native';
+import { Lock, Sparkles, Music } from 'lucide-react-native';
 
 type ViewMode = 'recent' | 'recap';
 type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all';
@@ -73,7 +75,7 @@ interface PeriodStats {
 }
 
 export default function RecapScreen() {
-  const { trips } = useTrips();
+  const { trips, updateTripSoundtrack } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationShortLabel, colors } = useSettings();
   const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
 
@@ -98,6 +100,7 @@ export default function RecapScreen() {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('weekly');
   const [showWeeklyRecap, setShowWeeklyRecap] = useState<boolean>(false);
   const [showReplay, setShowReplay] = useState<boolean>(false);
+  const [showTrackPicker, setShowTrackPicker] = useState<boolean>(false);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -545,6 +548,48 @@ export default function RecapScreen() {
             <AICoachCard trip={lastTrip} />
           </AnimatedCard>
         )}
+
+        {lastTrip && (
+          <AnimatedCard index={10} slideDistance={18} duration={300}>
+            <View style={styles.soundtrackCard}>
+              <View style={styles.soundtrackHeader}>
+                <View style={styles.soundtrackDot} />
+                <Text style={styles.soundtrackTitle}>DRIVE SOUNDTRACK</Text>
+              </View>
+              {lastTrip.soundtrack ? (
+                <>
+                  <SoundtrackBadge
+                    soundtrack={lastTrip.soundtrack}
+                    onRemove={() => void updateTripSoundtrack(lastTrip.id, undefined)}
+                  />
+                  <TouchableOpacity
+                    style={styles.soundtrackChangeButton}
+                    onPress={() => {
+                      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowTrackPicker(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Music size={15} color={colors.accent} />
+                    <Text style={styles.soundtrackChangeText}>Change Song</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={styles.soundtrackAddButton}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowTrackPicker(true);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Music size={18} color={colors.accent} />
+                  <Text style={styles.soundtrackAddText}>Add a Soundtrack</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </AnimatedCard>
+        )}
       </View>
     );
   };
@@ -899,6 +944,14 @@ export default function RecapScreen() {
         visible={showReplay}
         onClose={() => setShowReplay(false)}
       />
+
+      <TrackPickerModal
+        visible={showTrackPicker}
+        onClose={() => setShowTrackPicker(false)}
+        onSelect={(track: Soundtrack) => {
+          if (lastTrip) void updateTripSoundtrack(lastTrip.id, track);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1176,6 +1229,59 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 8,
+  },
+  soundtrackCard: {
+    backgroundColor: colors.cardLight,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 8,
+  },
+  soundtrackHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: 16,
+  },
+  soundtrackDot: {
+    width: 20,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+    marginRight: 10,
+  },
+  soundtrackTitle: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    letterSpacing: 1,
+  },
+  soundtrackAddButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 10,
+    backgroundColor: colors.accent + '15',
+    borderWidth: 1,
+    borderColor: colors.accent + '30',
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  soundtrackAddText: {
+    fontSize: 14,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.accent,
+  },
+  soundtrackChangeButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  soundtrackChangeText: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.accent,
   },
   consistencyHeader: {
     flexDirection: 'row' as const,

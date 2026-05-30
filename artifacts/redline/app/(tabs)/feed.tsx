@@ -24,6 +24,8 @@ import AnimatedCard from '@/components/AnimatedCard';
 import { ThemeColors } from '@/constants/colors';
 import AuthGate from '@/components/AuthGate';
 import CommentsModal from '@/components/CommentsModal';
+import SoundtrackBadge from '@/components/SoundtrackBadge';
+import { Soundtrack } from '@/types/trip';
 
 interface FeedItem {
   id: string;
@@ -52,6 +54,7 @@ interface PostItem {
   userCarModel?: string;
   text?: string;
   imageUrl?: string;
+  soundtrack?: Soundtrack;
   revCount: number;
   isRevved: boolean;
   createdAt: number;
@@ -541,6 +544,12 @@ export default function FeedScreen() {
 
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
+        ) : null}
+
+        {item.soundtrack ? (
+          <View style={styles.postSoundtrack}>
+            <SoundtrackBadge soundtrack={item.soundtrack} />
+          </View>
         ) : null}
 
         <View style={styles.postFooter}>
@@ -1218,6 +1227,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   postImage: {
     width: '100%',
     height: 280,
+  },
+  postSoundtrack: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
   },
   postFooter: {
     flexDirection: 'row',

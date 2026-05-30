@@ -11,6 +11,14 @@ export interface TripLocation {
   city?: string;
 }
 
+export interface Soundtrack {
+  trackId: number;
+  trackName: string;
+  artistName: string;
+  artworkUrl: string;
+  previewUrl: string;
+}
+
 export interface TripStats {
   id: string;
   startTime: number;
@@ -30,6 +38,7 @@ export interface TripStats {
   time100to200?: number;
   time0to300?: number;
   speedCamerasDetected?: number;
+  soundtrack?: Soundtrack;
 }
 
 export interface LeaderboardEntry {

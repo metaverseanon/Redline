@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TripStats, Location as LocationType, TripLocation } from '@/types/trip';
+import { TripStats, Location as LocationType, TripLocation, Soundtrack } from '@/types/trip';
 import {
   getNearbyCameras,
   isSpeedCameraRestricted,
@@ -1726,6 +1726,13 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     await saveTrips(updatedTrips);
   }, [trips]);
 
+  const updateTripSoundtrack = useCallback(async (tripId: string, soundtrack?: Soundtrack) => {
+    const updatedTrips = trips.map((trip) =>
+      trip.id === tripId ? { ...trip, soundtrack } : trip
+    );
+    await saveTrips(updatedTrips);
+  }, [trips]);
+
   const getUniqueCountries = useCallback(() => {
     const countries = trips
       .map((trip) => trip.location?.country)
@@ -1776,6 +1783,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     stopTracking,
     cancelTracking,
     updateTripCarModel,
+    updateTripSoundtrack,
     getUniqueCountries,
     getUniqueCities,
     getUniqueCarModels,

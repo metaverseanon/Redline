@@ -4,11 +4,36 @@ import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl, getDbConfig } f
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
+const SoundtrackSchema = z.object({
+  trackId: z.number(),
+  trackName: z.string(),
+  artistName: z.string(),
+  artworkUrl: z.string(),
+  previewUrl: z.string(),
+});
+
+type Soundtrack = z.infer<typeof SoundtrackSchema>;
+
+function parseSoundtrack(raw: unknown): Soundtrack | undefined {
+  if (!raw) return undefined;
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  const parsed = SoundtrackSchema.safeParse(obj);
+  return parsed.success ? parsed.data : undefined;
+}
+
 interface PostRow {
   id: string;
   user_id: string;
   text?: string;
   image_url?: string;
+  soundtrack?: Soundtrack | string | null;
   created_at: number;
 }
 
@@ -181,11 +206,12 @@ export const postsRouter = createTRPCRouter({
         userId: z.string(),
         text: z.string().optional(),
         imageUrl: z.string().optional(),
+        soundtrack: SoundtrackSchema.optional(),
       })
     )
     .mutation(async ({ input }) => {
       console.log("[POSTS] Creating post for user:", input.userId);
-      console.log("[POSTS] Input text:", input.text, "imageUrl:", input.imageUrl);
+      console.log("[POSTS] Input text:", input.text, "imageUrl:", input.imageUrl, "soundtrack:", input.soundtrack?.trackName);
       
       if (!isDbConfigured()) {
         console.error("[POSTS] DB not configured");
@@ -197,21 +223,41 @@ export const postsRouter = createTRPCRouter({
       }
 
       const id = `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const row = {
+      const baseRow = {
         id,
         user_id: input.userId,
         text: input.text?.trim() || null,
         image_url: input.imageUrl || null,
         created_at: Date.now(),
       };
+      const row = input.soundtrack
+        ? { ...baseRow, soundtrack: input.soundtrack }
+        : baseRow;
 
       console.log("[POSTS] Inserting post row:", JSON.stringify(row));
 
-      const resp = await fetch(getSupabaseRestUrl("posts"), {
+      let resp = await fetch(getSupabaseRestUrl("posts"), {
         method: "POST",
         headers: getSupabaseHeaders(),
         body: JSON.stringify(row),
       });
+
+      if (!resp.ok && input.soundtrack) {
+        const err = await resp.text();
+        // Gracefully degrade if the `soundtrack` column hasn't been added to the
+        // Supabase `posts` table yet: retry without it so the post still saves.
+        if (/soundtrack|column|PGRST204|schema cache/i.test(err)) {
+          console.warn("[POSTS] soundtrack column missing, retrying post without it:", err);
+          resp = await fetch(getSupabaseRestUrl("posts"), {
+            method: "POST",
+            headers: getSupabaseHeaders(),
+            body: JSON.stringify(baseRow),
+          });
+        } else {
+          console.error("[POSTS] Post insert failed:", resp.status, err);
+          throw new Error(`Failed to create post: ${err}`);
+        }
+      }
 
       if (!resp.ok) {
         const err = await resp.text();
@@ -298,6 +344,7 @@ export const postsRouter = createTRPCRouter({
           userCarModel: userMap.get(row.user_id)?.carModel,
           text: row.text,
           imageUrl: row.image_url,
+          soundtrack: parseSoundtrack(row.soundtrack),
           revCount: revCounts[row.id] || 0,
           isRevved: userRevs.has(row.id),
           createdAt: row.created_at,
@@ -346,6 +393,7 @@ export const postsRouter = createTRPCRouter({
           id: row.id,
           text: row.text,
           imageUrl: row.image_url,
+          soundtrack: parseSoundtrack(row.soundtrack),
           revCount: revCounts[row.id] || 0,
           createdAt: row.created_at,
         }));
@@ -661,6 +709,7 @@ export const postsRouter = createTRPCRouter({
           userCarModel: userMap.get(row.user_id)?.carModel,
           text: row.text,
           imageUrl: row.image_url,
+          soundtrack: parseSoundtrack(row.soundtrack),
           revCount: revCounts[row.id] || 0,
           isRevved: userRevs.has(row.id),
           createdAt: row.created_at,

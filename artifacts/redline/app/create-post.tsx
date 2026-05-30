@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
-import { ImagePlus, X, Send, ArrowLeft } from 'lucide-react-native';
+import { ImagePlus, X, Send, ArrowLeft, Music } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -22,6 +22,9 @@ import { useUser } from '@/providers/UserProvider';
 import { trpc } from '@/lib/trpc';
 import { uploadPostImage } from '@/lib/imageUpload';
 import { ThemeColors } from '@/constants/colors';
+import { Soundtrack } from '@/types/trip';
+import TrackPickerModal from '@/components/TrackPickerModal';
+import SoundtrackBadge from '@/components/SoundtrackBadge';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -31,6 +34,8 @@ export default function CreatePostScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [soundtrack, setSoundtrack] = useState<Soundtrack | null>(null);
+  const [showTrackPicker, setShowTrackPicker] = useState(false);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
   const utils = trpc.useUtils();
@@ -80,6 +85,11 @@ export default function CreatePostScreen() {
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
+  const removeSoundtrack = useCallback(() => {
+    setSoundtrack(null);
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
     if (!text.trim() && !imageUri) {
@@ -121,13 +131,14 @@ export default function CreatePostScreen() {
         userId: user.id,
         text: text.trim() || undefined,
         imageUrl: uploadedImageUrl,
+        soundtrack: soundtrack ?? undefined,
       });
     } catch (error) {
       console.error('[CREATE_POST] Submit error:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
       setIsSubmitting(false);
     }
-  }, [user?.id, text, imageUri, createPostMutation]);
+  }, [user?.id, text, imageUri, soundtrack, createPostMutation]);
 
   const canSubmit = (text.trim().length > 0 || !!imageUri) && !isSubmitting;
 
@@ -225,6 +236,12 @@ export default function CreatePostScreen() {
             </View>
           ) : null}
 
+          {soundtrack ? (
+            <View style={styles.soundtrackContainer}>
+              <SoundtrackBadge soundtrack={soundtrack} onRemove={removeSoundtrack} />
+            </View>
+          ) : null}
+
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={styles.toolbarButton}
@@ -235,11 +252,29 @@ export default function CreatePostScreen() {
               <ImagePlus size={22} color={colors.accent} />
               <Text style={styles.toolbarButtonText}>Add Photo</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toolbarButton}
+              onPress={() => {
+                if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowTrackPicker(true);
+              }}
+              activeOpacity={0.7}
+              testID="add-soundtrack-button"
+            >
+              <Music size={22} color={colors.accent} />
+              <Text style={styles.toolbarButtonText}>{soundtrack ? 'Change Song' : 'Add Song'}</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.charCount}>{text.length}/500</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <TrackPickerModal
+        visible={showTrackPicker}
+        onClose={() => setShowTrackPicker(false)}
+        onSelect={(track) => setSoundtrack(track)}
+      />
     </View>
   );
 }
@@ -342,8 +377,13 @@ const createStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
+    soundtrackContainer: {
+      marginTop: 16,
+    },
     toolbar: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
       marginTop: 20,
       paddingTop: 16,
       borderTopWidth: 1,
