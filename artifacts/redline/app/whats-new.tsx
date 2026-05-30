@@ -15,12 +15,12 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp, Crown, ShieldCheck } from 'lucide-react-native';
+import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp, Crown, ShieldCheck, Music, Film } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-export const CURRENT_APP_VERSION = '1.9.9';
+export const CURRENT_APP_VERSION = '1.9.21';
 
 interface FeaturePage {
   id: string;
@@ -33,6 +33,24 @@ interface FeaturePage {
 }
 
 const features: FeaturePage[] = [
+  {
+    id: 'drive-soundtrack',
+    icon: <Music size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Music size={20} color="#CC0000" />,
+    tag: 'PRO',
+    title: 'Drive',
+    highlight: 'Soundtrack',
+    description: 'Score every recap. Search any song and lay it over your drive video — open a recap, tap "Add a Soundtrack," and pick your track.',
+  },
+  {
+    id: 'cinematic-replay',
+    icon: <Film size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Film size={20} color="#CC0000" />,
+    tag: 'SHAREABLE',
+    title: 'Cinematic',
+    highlight: 'Replay',
+    description: 'Your stats now render as clean glass cards over a cinematic route animation — perfectly arranged and built to share. Export and post your best runs.',
+  },
   {
     id: 'smoother-purchases',
     icon: <ShieldCheck size={48} color="#FFFFFF" strokeWidth={1.5} />,

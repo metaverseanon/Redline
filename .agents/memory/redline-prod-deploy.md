@@ -33,5 +33,5 @@ prod deployment env and check prod logs for provider/quota errors.
 
 **Convention:** bump `BACKEND_VERSION` in `hono.ts` on every backend change so
 `GET /api/healthz` (`{version}`) immediately reveals whether prod is current.
-It had been left at `1.2.0` across multiple feature additions, which masked the
-stale deploy. Bumped to `1.3.0` for the replay-render + coach generation.
+Leaving it static across feature additions masks stale deploys — compare
+dev vs prod healthz to confirm whether a redeploy is still pending.

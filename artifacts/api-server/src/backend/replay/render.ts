@@ -433,7 +433,7 @@ export async function renderReplayVideo(input: ReplayRenderInput): Promise<Buffe
     });
   });
 
-  let timer: NodeJS.Timeout | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       reject(new Error("ffmpeg render timed out"));
