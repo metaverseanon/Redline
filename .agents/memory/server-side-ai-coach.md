@@ -32,3 +32,12 @@ proxy isn't provisioned. Null + `available` flag keeps the whole app alive.
 **How to apply:** any new server-side AI route — cache by a hash of the *full*
 normalized input, and size Zod output string caps above what the model realistically
 returns (or post-truncate before parse).
+
+## TripStats.distance is in KILOMETERS (not meters)
+Ground truth: `calculateDistance()` in `providers/TripProvider.tsx` is Haversine with
+`R = 6371` (km) → returns km; trip `distance += dist` accumulates km, and
+`avgSpeed = (distance/duration)*3600` yields km/h (consistent with topSpeed in km/h).
+So coach payloads pass `trip.distance` directly as `distanceKm` — no /1000.
+**Trap:** `app/(tabs)/recap.tsx` `getDriveConsistency()` has a stray
+`distanceKm = lastTrip.distance / 1000` — that line is an isolated pre-existing bug
+and is NOT evidence that distance is meters. Don't "fix" coach payloads to match it.
