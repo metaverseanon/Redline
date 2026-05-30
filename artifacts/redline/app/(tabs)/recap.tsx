@@ -1252,6 +1252,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.cardLight,
     borderRadius: 16,
     padding: 20,
+    marginTop: 12,
     marginBottom: 8,
   },
   soundtrackHeader: {

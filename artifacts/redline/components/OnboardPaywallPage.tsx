@@ -10,7 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Crown, Check, ChevronRight, Bell, Share2, Flag, Trophy, Music } from 'lucide-react-native';
+import { Crown, Check, ChevronRight, Bell, Share2, Flag, Trophy, Music, Sparkles, Globe, Infinity as InfinityIcon } from 'lucide-react-native';
 import { useSubscription, REVENUECAT_ENTITLEMENT_IDENTIFIER } from '@/lib/revenuecat';
 
 interface OnboardPaywallPageProps {
@@ -23,6 +23,9 @@ interface OnboardPaywallPageProps {
 }
 
 const PRO_HIGHLIGHTS = [
+  { icon: Sparkles, text: 'AI Drive Coach insights on every drive' },
+  { icon: Globe, text: 'Full leaderboard access' },
+  { icon: InfinityIcon, text: 'Unlimited drive recordings' },
   { icon: Bell, text: 'Friends boards leave alerts' },
   { icon: Share2, text: 'iOS share-sheet board invites' },
   { icon: Flag, text: 'Custom challenges with countdown' },
