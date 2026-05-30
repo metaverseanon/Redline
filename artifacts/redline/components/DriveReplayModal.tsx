@@ -392,15 +392,18 @@ export default function DriveReplayModal({ trip, visible, onClose }: DriveReplay
             </View>
 
             <View style={styles.statsGrid}>
-              {stats.map((s, i) => (
-                <View key={i} style={styles.statCell}>
-                  <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
-                  <Text style={styles.statValue}>
-                    {formatStat(s)}
-                    {s.suffix ? <Text style={styles.statSuffix}> {s.suffix}</Text> : null}
-                  </Text>
-                </View>
-              ))}
+              {stats.map((s, i) => {
+                const isLoneLast = stats.length % 2 === 1 && i === stats.length - 1;
+                return (
+                  <View key={i} style={[styles.statCell, isLoneLast && styles.statCellFull]}>
+                    <Text style={styles.statLabel}>{s.label.toUpperCase()}</Text>
+                    <Text style={styles.statValue}>
+                      {formatStat(s)}
+                      {s.suffix ? <Text style={styles.statSuffix}> {s.suffix}</Text> : null}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
 
             <View style={styles.footer}>
@@ -528,6 +531,9 @@ const styles = StyleSheet.create({
     width: '50%',
     alignItems: 'center',
     paddingVertical: 10,
+  },
+  statCellFull: {
+    width: '100%',
   },
   statLabel: {
     fontFamily: 'Orbitron_500Medium',
