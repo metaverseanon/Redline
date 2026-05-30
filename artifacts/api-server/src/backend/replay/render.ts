@@ -258,42 +258,102 @@ function formatStat(stat: z.infer<typeof ReplayStatSchema>, cp: number): string 
   return v.toFixed(stat.decimals ?? 0);
 }
 
+function roundRectPath(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 function drawStats(ctx: SKRSContext2D, stats: ReplayRenderInput["stats"], counterProgress: number) {
-  if (stats.length === 0) return;
-  const cols = stats.length >= 2 ? 2 : 1;
-  const rows = Math.ceil(stats.length / cols);
-  const gridTop = 1320;
-  const rowH = 200;
-  const colW = WIDTH / cols;
+  const n = stats.length;
+  if (n === 0) return;
+
+  // Grid: 1 stat -> 1 col, 2 -> 2, 3 -> 3 in one row, 4 -> 2x2.
+  const cols = n >= 4 ? 2 : n;
+  const rows = Math.ceil(n / cols);
+  const sideMargin = 64;
+  const gap = 22;
+  const cardH = rows === 1 ? 236 : 210;
+  const gridTop = rows === 1 ? 1330 : 1280;
+  const labelY = rows === 1 ? 88 : 80;
+  const valueBaseline = rows === 1 ? 200 : 176;
+  const usableW = WIDTH - sideMargin * 2;
+  const cardW = (usableW - gap * (cols - 1)) / cols;
 
   ctx.save();
-  ctx.textAlign = "center";
   stats.forEach((stat, i) => {
-    const col = i % cols;
     const row = Math.floor(i / cols);
-    const cx = colW * col + colW / 2;
-    const cy = gridTop + row * rowH;
+    const colInRow = i - row * cols;
+    const itemsInRow = Math.min(cols, n - row * cols);
+    const rowW = itemsInRow * cardW + (itemsInRow - 1) * gap;
+    const rowStartX = (WIDTH - rowW) / 2; // center an incomplete last row
+    const x = rowStartX + colInRow * (cardW + gap);
+    const y = gridTop + row * (cardH + gap);
+    const cx = x + cardW / 2;
 
+    // Glass card
+    roundRectPath(ctx, x, y, cardW, cardH, 30);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    ctx.stroke();
+
+    // Accent tick centered at top of the card
+    roundRectPath(ctx, cx - 26, y + 28, 52, 6, 3);
+    ctx.fillStyle = ACCENT;
+    ctx.fill();
+
+    // Label
+    ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = "600 30px 'DejaVu Sans'";
-    ctx.fillText(stat.label.toUpperCase(), cx, cy);
+    ctx.fillText(stat.label.toUpperCase(), cx, y + labelY);
 
+    // Value (+ optional accent suffix), centered as a group and auto-fit to width
     const valueText = formatStat(stat, counterProgress);
+    const suffix = stat.suffix ?? "";
+    const maxW = cardW - 56;
+    const measure = (vf: number) => {
+      ctx.font = `700 ${vf}px 'DejaVu Sans'`;
+      const vw = ctx.measureText(valueText).width;
+      let sw = 0;
+      if (suffix) {
+        ctx.font = `700 ${Math.round(vf * 0.4)}px 'DejaVu Sans'`;
+        sw = ctx.measureText(suffix).width;
+      }
+      return { vw, sw, gapW: suffix ? 12 : 0 };
+    };
+
+    let valueFont = rows === 1 ? 100 : 76;
+    let m = measure(valueFont);
+    let total = m.vw + m.gapW + m.sw;
+    if (total > maxW) {
+      valueFont = Math.floor(valueFont * (maxW / total));
+      m = measure(valueFont);
+      total = m.vw + m.gapW + m.sw;
+    }
+
+    const baseY = y + valueBaseline;
+    const startX = cx - total / 2;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "700 88px 'DejaVu Sans'";
-    const vw = ctx.measureText(valueText).width;
-    ctx.fillText(valueText, cx, cy + 92);
-    if (stat.suffix) {
+    ctx.font = `700 ${valueFont}px 'DejaVu Sans'`;
+    ctx.fillText(valueText, startX, baseY);
+    if (suffix) {
       ctx.fillStyle = ACCENT;
-      ctx.font = "700 34px 'DejaVu Sans'";
-      ctx.textAlign = "left";
-      ctx.fillText(stat.suffix, cx + vw / 2 + 12, cy + 92);
-      ctx.textAlign = "center";
+      ctx.font = `700 ${Math.round(valueFont * 0.4)}px 'DejaVu Sans'`;
+      ctx.fillText(suffix, startX + m.vw + m.gapW, baseY);
     }
   });
   ctx.restore();
-  void rows;
 }
 
 function drawFooter(ctx: SKRSContext2D, input: ReplayRenderInput) {

@@ -2,3 +2,4 @@
 - [TikTok SDK appId is App Store ID](tiktok-sdk-appid.md) — TikTokConfig appId must be the numeric iOS App Store ID, NOT the bundle identifier; wrong value makes events silently never match the TikTok app source.
 - [TikTok eventId is a dedup key](tiktok-event-dedup.md) — never pass a constant (e.g. user id) as trackEvent's eventId; TikTok dedups it and drops every repeat. Use a unique-per-occurrence id or omit it.
 - [Server-side AI coach](server-side-ai-coach.md) — AI runs in api-server via Replit AI Integrations (null-not-throw graceful degradation); cache by full input hash, keep Zod output caps generous.
+- [RedLine prod deploy is separate](redline-prod-deploy.md) — shipped app hits prod API (trip-stats-tracker.replit.app); new backend routes 404/throw until api-server is redeployed. Bump BACKEND_VERSION so /api/healthz reveals stale deploys.

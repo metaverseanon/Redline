@@ -7,7 +7,7 @@ import { createContext } from "./trpc/create-context";
 import { getDbConfig } from "./trpc/db";
 import { renderReplayVideo, ReplayRenderInputSchema } from "./replay/render";
 
-const BACKEND_VERSION = "1.2.0";
+const BACKEND_VERSION = "1.3.0";
 console.log(`[BACKEND] Starting RedLine API v${BACKEND_VERSION}`);
 
 const app = new Hono();
