@@ -17,6 +17,7 @@ import * as Sharing from 'expo-sharing';
 import { TripStats } from '@/types/trip';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
+import AIWeeklyCoachCard from '@/components/AIWeeklyCoachCard';
 
 interface WeeklyRecapCardProps {
   visible: boolean;
@@ -218,6 +219,8 @@ export default function WeeklyRecapCard({ visible, onClose, trips, weekStart, we
               )}
             </View>
           </ViewShot>
+
+          <AIWeeklyCoachCard trips={trips} weekStart={weekStart} weekEnd={weekEnd} />
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.actionBtn} onPress={handleSave} activeOpacity={0.7}>

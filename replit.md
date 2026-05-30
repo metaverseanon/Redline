@@ -123,6 +123,28 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
     options are Pro and route through `tryPaywall` (with Alert fallback) when
     tapped by free users.
 
+- **AI Drive Coach (Pro, server-side AI):** an AI coach layered on existing Pro
+  telemetry. Runs **server-side** via Replit AI Integrations (Anthropic proxy —
+  no user key, billed to project credits). `lib/anthropic.ts` lazily builds the
+  client and returns **null** when `AI_INTEGRATIONS_ANTHROPIC_*` env vars are
+  absent (so the server still boots and the feature degrades gracefully).
+  Backend router `coach`
+  (`artifacts/api-server/src/backend/trpc/routes/coach.ts`) exposes
+  `getTripCoaching` + `getWeeklyCoaching` as **queries**. Both Zod-validate in
+  and out, and cache the generated coaching via `cachedOrFetch` (30-day TTL) keyed
+  by a content hash (trip: stats+metrics+units+carModel; weekly: aggregate +
+  **ordered per-trip payload** so the key invalidates on any trip change). When
+  AI is unconfigured they return `{available:false, reason:"ai_unconfigured"}`;
+  on AI/validation error they **throw** so the client shows a retry state rather
+  than a misleading empty state. UI:
+  `components/AICoachCard.tsx` (per-trip card on the recap **recent** view, below
+  Pro Telemetry) and `components/AIWeeklyCoachCard.tsx` (weekly trends inside the
+  `WeeklyRecapCard` modal, placed **below** the shareable `ViewShot` so it's
+  excluded from the shared image). Both are Pro-gated via `useSubscription`:
+  free users see a locked teaser that routes to the paywall (`tryPaywall`-style
+  Alert fallback), subscribed users get loading / error-retry / content states,
+  and the cards hide entirely when AI is unconfigured.
+
 ### Feed reliability (Drives / Posts / Discover tabs)
 
 - Backend: `posts.getFeedPosts` (the **Posts** tab) shows **strictly** posts

@@ -43,6 +43,7 @@ import { useSettings } from '@/providers/SettingsProvider';
 import AnimatedCard from '@/components/AnimatedCard';
 import WeeklyRecapCard from '@/components/WeeklyRecapCard';
 import DriveReplayModal from '@/components/DriveReplayModal';
+import AICoachCard from '@/components/AICoachCard';
 import ProBadge from '@/components/ProBadge';
 import { TripStats } from '@/types/trip';
 import { ThemeColors } from '@/constants/colors';
@@ -536,6 +537,12 @@ export default function RecapScreen() {
         {lastTrip && (
           <AnimatedCard index={8} slideDistance={18} duration={300}>
             {renderProTelemetry(lastTrip)}
+          </AnimatedCard>
+        )}
+
+        {lastTrip && (
+          <AnimatedCard index={9} slideDistance={18} duration={300}>
+            <AICoachCard trip={lastTrip} />
           </AnimatedCard>
         )}
       </View>

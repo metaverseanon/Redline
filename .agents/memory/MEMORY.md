@@ -1,3 +1,4 @@
 - [EAS background builds get killed](eas-background-builds.md) — backgrounded `eas build` (nohup+disown) is killed by Replit sandbox after parent shell exits; run foreground with `timeout` so EAS finishes uploading before the shell ends.
 - [TikTok SDK appId is App Store ID](tiktok-sdk-appid.md) — TikTokConfig appId must be the numeric iOS App Store ID, NOT the bundle identifier; wrong value makes events silently never match the TikTok app source.
 - [TikTok eventId is a dedup key](tiktok-event-dedup.md) — never pass a constant (e.g. user id) as trackEvent's eventId; TikTok dedups it and drops every repeat. Use a unique-per-occurrence id or omit it.
+- [Server-side AI coach](server-side-ai-coach.md) — AI runs in api-server via Replit AI Integrations (null-not-throw graceful degradation); cache by full input hash, keep Zod output caps generous.
