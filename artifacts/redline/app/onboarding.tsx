@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye, Bell, Share2, Flag, TrendingUp } from 'lucide-react-native';
+import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye, Bell, Share2, Flag, TrendingUp, Music } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -121,6 +121,15 @@ const pages: OnboardingPage[] = [
     highlight: 'Rank Up',
     description: 'Climb the leaderboard and the app lights up with confetti, haptics and a shiny new-rank card. Earned, not given.',
     gradient: ['#10000a', '#000000'],
+  },
+  {
+    id: 'drive-soundtrack',
+    icon: <Music size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Music size={20} color="#CC0000" />,
+    title: 'Score Your',
+    highlight: 'Drive',
+    description: 'Add a soundtrack to your recap. Search any song and lay it over your drive video, then share it. Part of RedLine Pro.',
+    gradient: ['#0a0010', '#000000'],
   },
   {
     id: 'account',
