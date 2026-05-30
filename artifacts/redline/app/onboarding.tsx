@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye, Bell, Share2, Flag, TrendingUp, Music } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
+import OnboardSoundtrackPreview from '@/components/OnboardSoundtrackPreview';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ONBOARDING_KEY = 'onboarding_completed';
@@ -342,6 +343,7 @@ export default function OnboardingScreen() {
                 <Text style={styles.title}>{page.title}</Text>
                 <Text style={styles.highlight}>{page.highlight}</Text>
                 <Text style={styles.description}>{page.description}</Text>
+                {page.id === 'drive-soundtrack' && <OnboardSoundtrackPreview />}
               </Animated.View>
             </View>
           </View>
