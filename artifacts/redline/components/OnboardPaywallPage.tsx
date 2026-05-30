@@ -10,7 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Crown, Check, ChevronRight, Bell, Share2, Flag, Trophy } from 'lucide-react-native';
+import { Crown, Check, ChevronRight, Bell, Share2, Flag, Trophy, Music } from 'lucide-react-native';
 import { useSubscription, REVENUECAT_ENTITLEMENT_IDENTIFIER } from '@/lib/revenuecat';
 
 interface OnboardPaywallPageProps {
@@ -27,6 +27,7 @@ const PRO_HIGHLIGHTS = [
   { icon: Share2, text: 'iOS share-sheet board invites' },
   { icon: Flag, text: 'Custom challenges with countdown' },
   { icon: Trophy, text: 'Rank-up confetti celebrations' },
+  { icon: Music, text: 'Drive soundtracks on recaps & posts' },
 ];
 
 function formatPrice(price: number, currencyCode: string): string {

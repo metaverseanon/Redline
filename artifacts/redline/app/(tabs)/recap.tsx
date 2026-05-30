@@ -96,6 +96,27 @@ export default function RecapScreen() {
       );
     }
   }, [presentPaywall, getLastPaywallError]);
+
+  const handleSoundtrackPress = useCallback(async () => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!isSubscribed) {
+      try {
+        const result = await presentPaywall('recap_soundtrack');
+        if (result === 'not_presented' || result === 'error') {
+          const reason = getLastPaywallError?.();
+          Alert.alert(
+            'Drive Soundtrack',
+            reason ?? 'The upgrade screen could not be opened right now. Please try again in a moment.',
+          );
+        }
+      } catch (e: any) {
+        Alert.alert('Drive Soundtrack', `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`);
+      }
+      return;
+    }
+    setShowTrackPicker(true);
+  }, [isSubscribed, presentPaywall, getLastPaywallError]);
+
   const [viewMode, setViewMode] = useState<ViewMode>('recent');
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('weekly');
   const [showWeeklyRecap, setShowWeeklyRecap] = useState<boolean>(false);
@@ -555,8 +576,9 @@ export default function RecapScreen() {
               <View style={styles.soundtrackHeader}>
                 <View style={styles.soundtrackDot} />
                 <Text style={styles.soundtrackTitle}>DRIVE SOUNDTRACK</Text>
+                {!isSubscribed && <ProBadge size="sm" />}
               </View>
-              {lastTrip.soundtrack ? (
+              {isSubscribed && lastTrip.soundtrack ? (
                 <>
                   <SoundtrackBadge
                     soundtrack={lastTrip.soundtrack}
@@ -564,10 +586,7 @@ export default function RecapScreen() {
                   />
                   <TouchableOpacity
                     style={styles.soundtrackChangeButton}
-                    onPress={() => {
-                      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setShowTrackPicker(true);
-                    }}
+                    onPress={() => { void handleSoundtrackPress(); }}
                     activeOpacity={0.7}
                   >
                     <Music size={15} color={colors.accent} />
@@ -577,14 +596,13 @@ export default function RecapScreen() {
               ) : (
                 <TouchableOpacity
                   style={styles.soundtrackAddButton}
-                  onPress={() => {
-                    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowTrackPicker(true);
-                  }}
+                  onPress={() => { void handleSoundtrackPress(); }}
                   activeOpacity={0.85}
                 >
                   <Music size={18} color={colors.accent} />
-                  <Text style={styles.soundtrackAddText}>Add a Soundtrack</Text>
+                  <Text style={styles.soundtrackAddText}>
+                    {isSubscribed ? 'Add a Soundtrack' : 'Add a Soundtrack — Pro'}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>

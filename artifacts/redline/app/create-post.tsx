@@ -25,11 +25,14 @@ import { ThemeColors } from '@/constants/colors';
 import { Soundtrack } from '@/types/trip';
 import TrackPickerModal from '@/components/TrackPickerModal';
 import SoundtrackBadge from '@/components/SoundtrackBadge';
+import ProBadge from '@/components/ProBadge';
+import { useSubscription } from '@/lib/revenuecat';
 
 export default function CreatePostScreen() {
   const router = useRouter();
   const { user } = useUser();
   const { colors } = useSettings();
+  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,6 +92,26 @@ export default function CreatePostScreen() {
     setSoundtrack(null);
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
+
+  const handleAddSoundtrack = useCallback(async () => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!isSubscribed) {
+      try {
+        const result = await presentPaywall('create_post_soundtrack');
+        if (result === 'not_presented' || result === 'error') {
+          const reason = getLastPaywallError?.();
+          Alert.alert(
+            'Drive Soundtrack',
+            reason ?? 'The upgrade screen could not be opened right now. Please try again in a moment.',
+          );
+        }
+      } catch (e: any) {
+        Alert.alert('Drive Soundtrack', `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`);
+      }
+      return;
+    }
+    setShowTrackPicker(true);
+  }, [isSubscribed, presentPaywall, getLastPaywallError]);
 
   const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
@@ -254,15 +277,13 @@ export default function CreatePostScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.toolbarButton}
-              onPress={() => {
-                if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowTrackPicker(true);
-              }}
+              onPress={() => { void handleAddSoundtrack(); }}
               activeOpacity={0.7}
               testID="add-soundtrack-button"
             >
               <Music size={22} color={colors.accent} />
               <Text style={styles.toolbarButtonText}>{soundtrack ? 'Change Song' : 'Add Song'}</Text>
+              {!isSubscribed && <ProBadge size="sm" />}
             </TouchableOpacity>
           </View>
 
