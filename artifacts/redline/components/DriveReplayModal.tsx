@@ -12,14 +12,13 @@ import {
   Dimensions,
 } from 'react-native';
 import Svg, { Line, Circle } from 'react-native-svg';
-import { X, Play, RotateCcw, Video as VideoIcon, Crown } from 'lucide-react-native';
+import { X, Play, RotateCcw, Video as VideoIcon } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { File, Paths } from 'expo-file-system';
 import { TripStats } from '@/types/trip';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
-import { useSubscription } from '@/lib/revenuecat';
 
 interface DriveReplayModalProps {
   trip: TripStats | null;
@@ -88,7 +87,6 @@ function downsample<T>(arr: T[], max: number): T[] {
 export default function DriveReplayModal({ trip, visible, onClose }: DriveReplayModalProps) {
   const { user } = useUser();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel } = useSettings();
-  const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
 
   const [progress, setProgress] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -275,7 +273,7 @@ export default function DriveReplayModal({ trip, visible, onClose }: DriveReplay
         title: trip.carModel || 'RedLine Drive',
         subtitle,
         handle,
-        watermark: !isSubscribed,
+        watermark: false,
         stats: stats.map((s) => ({
           label: s.label,
           value: s.value,
@@ -326,15 +324,7 @@ export default function DriveReplayModal({ trip, visible, onClose }: DriveReplay
     } finally {
       setExporting(false);
     }
-  }, [trip, projected, subtitle, handle, isSubscribed, stats, routePoints]);
-
-  const handleUpgrade = useCallback(async () => {
-    const result = await presentPaywall('drive_replay_export');
-    if (result === 'not_presented' || result === 'error') {
-      const msg = getLastPaywallError();
-      if (msg) Alert.alert('Upgrade Unavailable', msg);
-    }
-  }, [presentPaywall, getLastPaywallError]);
+  }, [trip, projected, subtitle, handle, stats, routePoints]);
 
   const hasRoute = !!projected;
 
@@ -409,7 +399,6 @@ export default function DriveReplayModal({ trip, visible, onClose }: DriveReplay
             <View style={styles.footer}>
               {subtitle ? <Text style={styles.footerText}>{subtitle}</Text> : null}
               {handle ? <Text style={styles.footerText}>{handle}</Text> : null}
-              {!isSubscribed ? <Text style={styles.watermarkPreview}>MADE WITH REDLINE</Text> : null}
             </View>
           </View>
 
@@ -443,13 +432,6 @@ export default function DriveReplayModal({ trip, visible, onClose }: DriveReplay
               )}
             </TouchableOpacity>
           </View>
-
-          {!isSubscribed ? (
-            <TouchableOpacity style={styles.upgradeRow} onPress={handleUpgrade} activeOpacity={0.7} disabled={exporting}>
-              <Crown size={14} color={ACCENT} />
-              <Text style={styles.upgradeText}>Go Pro to remove the watermark</Text>
-            </TouchableOpacity>
-          ) : null}
         </View>
       </View>
     </Modal>
@@ -564,13 +546,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textAlign: 'center',
   },
-  watermarkPreview: {
-    fontFamily: 'Orbitron_600SemiBold',
-    fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.32)',
-    letterSpacing: 1.5,
-    marginTop: 4,
-  },
   controlsRow: {
     flexDirection: 'row',
     marginTop: 22,
@@ -597,19 +572,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Orbitron_600SemiBold',
     fontSize: 13,
     color: '#FFFFFF',
-  },
-  upgradeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 14,
-    paddingVertical: 6,
-  },
-  upgradeText: {
-    fontFamily: 'Orbitron_500Medium',
-    fontSize: 12,
-    color: ACCENT,
-    letterSpacing: 0.3,
   },
 });
