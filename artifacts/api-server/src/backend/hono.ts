@@ -6,6 +6,7 @@ import { appRouter } from "./trpc/app-router";
 import { createContext } from "./trpc/create-context";
 import { getDbConfig } from "./trpc/db";
 import { renderReplayVideo, ReplayRenderInputSchema } from "./replay/render";
+import { setUserProStatus } from "./trpc/routes/subscription";
 
 const BACKEND_VERSION = "1.3.0";
 console.log(`[BACKEND] Starting RedLine API v${BACKEND_VERSION}`);
@@ -209,6 +210,103 @@ const backfillWelcomeEmailsHandler = async (c: any) => {
 for (const prefix of ["/cron", "/api/cron"]) {
   app.get(`${prefix}/backfill-welcome-emails`, backfillWelcomeEmailsHandler);
   app.post(`${prefix}/backfill-welcome-emails`, backfillWelcomeEmailsHandler);
+}
+
+// --- RevenueCat webhook: server-authoritative Pro status ---------------------
+// Configure in the RevenueCat dashboard with an Authorization header matching
+// REVENUECAT_WEBHOOK_AUTH (optional but recommended).
+const GRANT_EVENTS = new Set([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "PRODUCT_CHANGE",
+  "UNCANCELLATION",
+  "NON_RENEWING_PURCHASE",
+  "CANCELLATION", // auto-renew off but still entitled until expiry
+]);
+const REVOKE_EVENTS = new Set(["EXPIRATION", "SUBSCRIPTION_PAUSED"]);
+
+const revenueCatWebhookHandler = async (c: any) => {
+  const expected = process.env.REVENUECAT_WEBHOOK_AUTH;
+  if (expected) {
+    const authHeader = c.req.header("Authorization");
+    if (authHeader !== expected && authHeader !== `Bearer ${expected}`) {
+      console.log("[REVENUECAT] Unauthorized webhook request");
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+  }
+
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const event = body?.event;
+  const type: string | undefined = event?.type;
+  const appUserId: string | undefined = event?.app_user_id;
+  if (!type || !appUserId) {
+    console.warn("[REVENUECAT] Missing event type or app_user_id", { type, hasUser: !!appUserId });
+    return c.json({ ok: true, ignored: true });
+  }
+
+  try {
+    if (GRANT_EVENTS.has(type)) {
+      const expiresAt =
+        typeof event?.expiration_at_ms === "number" ? event.expiration_at_ms : null;
+      await setUserProStatus(appUserId, true, expiresAt);
+      console.log("[REVENUECAT] Granted Pro", { appUserId, type, expiresAt });
+    } else if (REVOKE_EVENTS.has(type)) {
+      await setUserProStatus(appUserId, false);
+      console.log("[REVENUECAT] Revoked Pro", { appUserId, type });
+    } else {
+      console.log("[REVENUECAT] Ignored event type", type);
+    }
+  } catch (err) {
+    console.error("[REVENUECAT] Webhook processing failed", err);
+    return c.json({ error: "Processing failed" }, 500);
+  }
+
+  return c.json({ ok: true });
+};
+
+for (const prefix of ["/webhooks", "/api/webhooks"]) {
+  app.post(`${prefix}/revenuecat`, revenueCatWebhookHandler);
+}
+
+// --- Challenges lifecycle cron ----------------------------------------------
+// Drives activation (pending → active at threshold) and finalization (past
+// end_time → crown winners + grant rewards). getActiveChallenge runs both
+// transitions as a side effect, so the cron simply invokes it.
+const challengesCronHandler = async (c: any) => {
+  const authHeader = c.req.header("Authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    console.log("[CRON] Unauthorized request to challenges-tick");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  console.log("[CRON] Challenges tick at", new Date().toISOString());
+  try {
+    const caller = appRouter.createCaller({ req: c.req.raw, db: getDbConfig() });
+    const result = await caller.challenges.getActiveChallenge({});
+    return c.json({
+      success: true,
+      status: result.challenge?.status ?? null,
+      proCount: result.proCount,
+      triggeredAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("[CRON] Challenges tick failed:", error);
+    return c.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      500,
+    );
+  }
+};
+
+for (const prefix of ["/cron", "/api/cron"]) {
+  app.get(`${prefix}/challenges-tick`, challengesCronHandler);
+  app.post(`${prefix}/challenges-tick`, challengesCronHandler);
 }
 
 const cronCatchAll = (c: any) => {

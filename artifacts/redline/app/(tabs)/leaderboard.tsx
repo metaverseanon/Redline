@@ -2077,6 +2077,30 @@ export default function LeaderboardScreen() {
           }
         >
           {topTabsView}
+          <TouchableOpacity
+            style={styles.challengeCta}
+            activeOpacity={0.9}
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              router.push('/challenges' as any);
+            }}
+          >
+            <View style={styles.challengeCtaIcon}>
+              <Trophy size={22} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.challengeCtaTitleRow}>
+                <Text style={styles.challengeCtaTitle}>Challenges</Text>
+                {!isSubscribed && <ProBadge size="sm" />}
+              </View>
+              <Text style={styles.challengeCtaSubtitle}>
+                2-week rounds · win cash & Pro · watch the live board
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.textLight} />
+          </TouchableOpacity>
           {!user?.id ? (
             <View style={styles.friendsSignInCard}>
               <View style={styles.friendsSignInIcon}>
@@ -3847,6 +3871,48 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: colors.cardBackground,
+  },
+  challengeCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.cardBackground,
+  },
+  challengeCtaIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  challengeCtaTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  challengeCtaTitle: {
+    fontSize: 14,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.text,
+    letterSpacing: 0.5,
+  },
+  challengeCtaSubtitle: {
+    fontSize: 10,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+    marginTop: 3,
+    letterSpacing: 0.3,
   },
   privateBoardsCtaIcon: {
     width: 36,

@@ -12,6 +12,8 @@ import { communitiesRouter } from "./routes/communities";
 import { speedCamerasRouter } from "./routes/speed-cameras";
 import { coachRouter } from "./routes/coach";
 import { musicRouter } from "./routes/music";
+import { subscriptionRouter } from "./routes/subscription";
+import { challengesRouter } from "./routes/challenges";
 
 console.log("[ROUTER] Initializing app router v1.2");
 
@@ -29,6 +31,8 @@ export const appRouter = createTRPCRouter({
   speedCameras: speedCamerasRouter,
   coach: coachRouter,
   music: musicRouter,
+  subscription: subscriptionRouter,
+  challenges: challengesRouter,
 });
 
 export type AppRouter = typeof appRouter;

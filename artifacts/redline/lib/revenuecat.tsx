@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
+import { trpc } from "@/lib/trpc";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -375,6 +376,32 @@ export function SubscriptionProvider({
       cancelled = true;
     };
   }, [userId, value.isAvailable, queryClient]);
+
+  // Backstop: keep the server's Pro flag (users.is_pro / pro_expires_at) in sync
+  // with RevenueCat so challenge participation + Pro counts work even before the
+  // dashboard webhook is configured. Only runs on native where RC is the source
+  // of truth — never downgrades from web (where customerInfo is unavailable).
+  const syncStatusMutation = trpc.subscription.syncStatus.useMutation();
+  const lastSyncRef = useRef<string>("");
+  useEffect(() => {
+    if (!userId) return;
+    if (!value.isAvailable) return;
+    if (value.customerInfo === undefined) return; // still loading
+    const active = value.customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+    const isPro = !!active || hasProOverride(userEmail);
+    const expRaw = active?.expirationDate ?? null;
+    const parsed = expRaw ? Date.parse(expRaw) : NaN;
+    const expiresAt = Number.isFinite(parsed) ? parsed : null;
+    const sig = `${userId}|${isPro}|${expiresAt ?? ""}`;
+    if (sig === lastSyncRef.current) return;
+    lastSyncRef.current = sig;
+    // Only nudge the server to re-verify; it re-checks the entitlement with
+    // RevenueCat itself and never trusts a client-supplied Pro flag.
+    syncStatusMutation.mutate(
+      { userId },
+      { onError: (err) => console.warn("[RC] syncStatus failed:", err.message) },
+    );
+  }, [userId, userEmail, value.isAvailable, value.customerInfo, syncStatusMutation]);
 
   return (
     <Context.Provider value={value}>
