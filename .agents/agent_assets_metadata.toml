@@ -6,6 +6,24 @@ uri = "file://attached_assets/redline_paywall_mockup.png"
 type = "image"
 title = "redline paywall mockup"
 
+[[generated]]
+id = "MuE9vKfj_vKLvuJsLgKm2"
+uri = "file://attached_assets/generated_images/badge_1st_champion.png"
+type = "image"
+title = "first place gold badge"
+
+[[generated]]
+id = "6IXkbOnIAfgxsk6Lo0axD"
+uri = "file://attached_assets/generated_images/badge_2nd_runnerup.png"
+type = "image"
+title = "second place silver badge"
+
+[[generated]]
+id = "vx4XUQU73vdMwW0fGYo3_"
+uri = "file://attached_assets/generated_images/badge_3rd_bronze.png"
+type = "image"
+title = "third place bronze badge"
+
 [[outputs]]
 id = "JDbMZA0zMxXxDO6Dx5--P"
 uri = "file://attached_assets/redline_paywall_mockup.png"
@@ -17,3 +35,21 @@ id = "VHdtJeOxNCTlUKG8rCcVM"
 uri = "file://attached_assets/redline_paywall_mockup_iphone.png"
 type = "image"
 title = "RedLine paywall mockup — iPhone 15 Pro Max size (1290×2796)"
+
+[[outputs]]
+id = "V7hWP03dSTwCm3kAX-Bqr"
+uri = "file://attached_assets/generated_images/badge_1st_champion.png"
+type = "image"
+title = "1st Place — Champion (Gold)"
+
+[[outputs]]
+id = "bGFa3p6pwhZVSLoOMoe59"
+uri = "file://attached_assets/generated_images/badge_2nd_runnerup.png"
+type = "image"
+title = "2nd Place — Runner-Up (Silver)"
+
+[[outputs]]
+id = "rjkPOc0-ycmBFTNASQi0c"
+uri = "file://attached_assets/generated_images/badge_3rd_bronze.png"
+type = "image"
+title = "3rd Place — Bronze"
