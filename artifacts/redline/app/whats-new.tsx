@@ -15,12 +15,12 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Bell, Share2, Flag, Trophy, ChevronRight, Sparkles, X, TrendingUp, Crown, ShieldCheck, Music, Film } from 'lucide-react-native';
+import { Flag, Trophy, ChevronRight, Sparkles, X, Crown, Users, Gauge } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
-export const CURRENT_APP_VERSION = '1.9.21';
+export const CURRENT_APP_VERSION = '1.9.22';
 
 interface FeaturePage {
   id: string;
@@ -34,76 +34,40 @@ interface FeaturePage {
 
 const features: FeaturePage[] = [
   {
-    id: 'drive-soundtrack',
-    icon: <Music size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Music size={20} color="#CC0000" />,
-    tag: 'PRO',
-    title: 'Drive',
-    highlight: 'Soundtrack',
-    description: 'Score every recap. Search any song and lay it over your drive video — open a recap, tap "Add a Soundtrack," and pick your track.',
+    id: 'challenges-intro',
+    icon: <Trophy size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Flag size={20} color="#CC0000" />,
+    tag: 'NEW · SEASON 1',
+    title: 'Introducing',
+    highlight: 'Challenges',
+    description: 'Go head-to-head with the entire RedLine community in two-week seasons. Earn points for how you drive, climb a live leaderboard, and race for the top spot.',
   },
   {
-    id: 'cinematic-replay',
-    icon: <Film size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Film size={20} color="#CC0000" />,
-    tag: 'SHAREABLE',
-    title: 'Cinematic',
-    highlight: 'Replay',
-    description: 'Your stats now render as clean glass cards over a cinematic route animation — perfectly arranged and built to share. Export and post your best runs.',
+    id: 'challenges-points',
+    icon: <Gauge size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Flag size={20} color="#CC0000" />,
+    tag: 'HOW IT WORKS',
+    title: 'Earn',
+    highlight: 'Points',
+    description: 'Score for real driving and activity — 1 pt per 10 km, 10 pts per hour of seat time, plus bonuses for daily streaks, posting your ride, and growing your crew. Every point is transparent.',
   },
   {
-    id: 'smoother-purchases',
-    icon: <ShieldCheck size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <ShieldCheck size={20} color="#CC0000" />,
-    tag: 'RELIABILITY',
-    title: 'Smoother',
-    highlight: 'Purchases',
-    description: 'We rebuilt the in-app purchase flow from the ground up. No more "error after purchase" — your subscription unlocks the moment Apple confirms it.',
+    id: 'challenges-unlock',
+    icon: <Users size={48} color="#FFFFFF" strokeWidth={1.5} />,
+    decorIcon: <Trophy size={20} color="#CC0000" />,
+    tag: 'SEASON 1',
+    title: 'Unlocks at',
+    highlight: '100 Pro',
+    description: 'Season 1 goes live the moment RedLine reaches 100 Pro members. Anyone can watch the live leaderboard — Pro members join in and compete for the prizes.',
   },
   {
-    id: 'global-leaderboard-pro',
+    id: 'challenges-prizes',
     icon: <Crown size={48} color="#FFFFFF" strokeWidth={1.5} />,
     decorIcon: <Trophy size={20} color="#CC0000" />,
-    tag: 'PRO',
-    title: 'Global',
-    highlight: 'Leaderboard',
-    description: 'New accounts now unlock the global leaderboard with RedLine Pro. Compete worldwide, filter by country, city, brand and model.',
-  },
-  {
-    id: 'leave-notif',
-    icon: <Bell size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Bell size={20} color="#CC0000" />,
-    tag: 'FRIENDS BOARDS',
-    title: 'Leave',
-    highlight: 'Alerts',
-    description: 'Own a private leaderboard? Get a push the moment any member joins or leaves your board — no more guessing who quit.',
-  },
-  {
-    id: 'share-invite',
-    icon: <Share2 size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Share2 size={20} color="#CC0000" />,
-    tag: 'INVITES',
-    title: 'Share In',
-    highlight: 'Two Taps',
-    description: 'Send a board invite through Messages, WhatsApp, Mail or anywhere with the native iOS share sheet. Friends join instantly.',
-  },
-  {
-    id: 'custom-challenges',
-    icon: <Flag size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Flag size={20} color="#CC0000" />,
-    tag: 'CHALLENGES',
-    title: 'Custom',
-    highlight: 'Challenges',
-    description: 'Owners can set a goal, target and timer for the whole board. Members get a push and a live banner with progress + countdown.',
-  },
-  {
-    id: 'rank-up',
-    icon: <TrendingUp size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Trophy size={20} color="#CC0000" />,
-    tag: 'CELEBRATIONS',
-    title: 'Rank Up',
-    highlight: 'Confetti',
-    description: 'Climb the leaderboard and the app erupts with confetti, haptics and a shiny new-rank card. Every win deserves a moment.',
+    tag: 'PRIZES',
+    title: 'Win Real',
+    highlight: 'Rewards',
+    description: 'Top 3 each season take home the glory: 1st earns $200 cash, a Champion badge and a Hall of Fame spot. 2nd wins a full year of Pro, 3rd wins 3 months — both get a badge.',
   },
 ];
 
