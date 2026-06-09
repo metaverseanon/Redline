@@ -11,7 +11,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ChevronLeft,
@@ -127,6 +127,7 @@ export default function ChallengesScreen() {
   const { user } = useUser();
   const { colors } = useSettings();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
 
   const [nowTick, setNowTick] = useState(Date.now());
@@ -172,7 +173,9 @@ export default function ChallengesScreen() {
   const tryPaywall = useCallback(async () => {
     try {
       const result = (await presentPaywall('challenges')) as PaywallResult | void;
-      if (result === 'not_presented' || result === 'error') {
+      if (result === 'purchased' || result === 'restored') {
+        void activeQuery.refetch();
+      } else if (result === 'not_presented' || result === 'error') {
         const reason = getLastPaywallError?.();
         Alert.alert(
           'Pro feature',
@@ -183,7 +186,7 @@ export default function ChallengesScreen() {
     } catch (e: any) {
       Alert.alert('Pro feature', `The upgrade screen could not be opened: ${e?.message ?? 'unknown error'}`);
     }
-  }, [presentPaywall, getLastPaywallError]);
+  }, [presentPaywall, getLastPaywallError, activeQuery]);
 
   const handleJoin = useCallback(() => {
     if (!user?.id) {
@@ -356,8 +359,8 @@ export default function ChallengesScreen() {
               </Text>
             </View>
 
-            {/* Join / status */}
-            {isActive && (
+            {/* Join / status (Pro members) */}
+            {isActive && canParticipate && (
               <View style={styles.joinCard}>
                 {joined ? (
                   <View style={styles.joinedRow}>
@@ -372,31 +375,18 @@ export default function ChallengesScreen() {
                     </View>
                   </View>
                 ) : (
-                  <>
-                    <TouchableOpacity
-                      style={styles.joinBtn}
-                      activeOpacity={0.85}
-                      onPress={handleJoin}
-                      disabled={joinMutation.isPending}
-                    >
-                      {joinMutation.isPending ? (
-                        <ActivityIndicator color={colors.textInverted} />
-                      ) : (
-                        <>
-                          {!canParticipate && <Lock size={16} color={colors.textInverted} />}
-                          <Text style={styles.joinBtnText}>
-                            {canParticipate ? 'Join the Challenge' : 'Join with Pro'}
-                          </Text>
-                          {!canParticipate && <ProBadge size="sm" />}
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    {!canParticipate && (
-                      <Text style={styles.joinHint}>
-                        Anyone can watch the live leaderboard. Pro members compete for the prizes.
-                      </Text>
+                  <TouchableOpacity
+                    style={styles.joinBtn}
+                    activeOpacity={0.85}
+                    onPress={handleJoin}
+                    disabled={joinMutation.isPending}
+                  >
+                    {joinMutation.isPending ? (
+                      <ActivityIndicator color={colors.textInverted} />
+                    ) : (
+                      <Text style={styles.joinBtnText}>Join the Challenge</Text>
                     )}
-                  </>
+                  </TouchableOpacity>
                 )}
               </View>
             )}
@@ -596,6 +586,20 @@ export default function ChallengesScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Persistent subscribe CTA for non-Pro members */}
+      {challenge && !canParticipate && (
+        <View style={[styles.footerBar, { paddingBottom: insets.bottom + 12 }]}>
+          <TouchableOpacity style={styles.joinBtn} activeOpacity={0.85} onPress={handleJoin}>
+            <Lock size={16} color={colors.textInverted} />
+            <Text style={styles.joinBtnText}>Join the Challenge</Text>
+            <ProBadge size="sm" />
+          </TouchableOpacity>
+          <Text style={styles.joinHint}>
+            Subscribe to Pro to be eligible to compete for cash &amp; prizes.
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -906,6 +910,13 @@ const createStyles = (colors: ThemeColors) =>
     joinCard: {
       marginHorizontal: 16,
       marginTop: 16,
+    },
+    footerBar: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.cardBackground,
     },
     joinBtn: {
       flexDirection: 'row',
