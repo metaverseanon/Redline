@@ -6,7 +6,7 @@ import { appRouter } from "./trpc/app-router";
 import { createContext } from "./trpc/create-context";
 import { getDbConfig } from "./trpc/db";
 import { renderReplayVideo, ReplayRenderInputSchema } from "./replay/render";
-import { setUserProStatus } from "./trpc/routes/subscription";
+import { setUserProStatus, backfillProStatus } from "./trpc/routes/subscription";
 
 const BACKEND_VERSION = "1.3.0";
 console.log(`[BACKEND] Starting RedLine API v${BACKEND_VERSION}`);
@@ -307,6 +307,39 @@ const challengesCronHandler = async (c: any) => {
 for (const prefix of ["/cron", "/api/cron"]) {
   app.get(`${prefix}/challenges-tick`, challengesCronHandler);
   app.post(`${prefix}/challenges-tick`, challengesCronHandler);
+}
+
+// --- Pro status reconciliation backfill -------------------------------------
+// Scans a page of users and mirrors their current RevenueCat entitlement into
+// users.is_pro. Paged via ?offset & ?limit; response includes nextOffset (null
+// when done). Used to populate Pro flags for subscribers who purchased before
+// the server had a RevenueCat secret key.
+const backfillProHandler = async (c: any) => {
+  const authHeader = c.req.header("Authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    console.log("[CRON] Unauthorized request to backfill-pro");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
+  const limitRaw = parseInt(c.req.query("limit") ?? "500", 10) || 500;
+  const limit = Math.min(1000, Math.max(1, limitRaw));
+  console.log("[CRON] backfill-pro", { offset, limit });
+  try {
+    const summary = await backfillProStatus(offset, limit);
+    return c.json({ success: true, offset, limit, ...summary });
+  } catch (error) {
+    console.error("[CRON] backfill-pro failed:", error);
+    return c.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      500,
+    );
+  }
+};
+
+for (const prefix of ["/cron", "/api/cron"]) {
+  app.get(`${prefix}/backfill-pro`, backfillProHandler);
+  app.post(`${prefix}/backfill-pro`, backfillProHandler);
 }
 
 const cronCatchAll = (c: any) => {

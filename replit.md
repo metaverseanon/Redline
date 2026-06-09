@@ -40,6 +40,15 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - `EXPO_PUBLIC_REVENUECAT_TEST_API_KEY` — RevenueCat public **test** key, used in
   Expo Go / dev builds (preview API mode mocks purchases). For production builds
   set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` / `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY`.
+- `REVENUECAT_SECRET_API_KEY` — RevenueCat **secret** key (server-side only). The
+  api-server uses it to verify Pro entitlements via the RevenueCat REST **v2** API
+  (new `sk_` keys are rejected by the legacy v1 `/subscribers` endpoint). Powers
+  `subscription.syncStatus`, the webhook, and the `/api/cron/backfill-pro`
+  reconciliation. Optional overrides: `REVENUECAT_PROJECT_ID`,
+  `REVENUECAT_PROJECT_NAME`, `REVENUECAT_ENTITLEMENT_ID` (defaults to
+  "RedLine App Pro" lookup_key). Prod must be redeployed with this key set for
+  ongoing sync; a one-off backfill from dev fixes the count immediately since
+  dev + prod share one Supabase instance.
 - `EXPO_PUBLIC_TIKTOK_APP_ID` / `EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN` — TikTok
   Business SDK credentials from TikTok Events Manager (the iOS app source). Set
   in `eas.json` production `env` so they're baked into production builds. The
