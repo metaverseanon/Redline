@@ -1489,6 +1489,33 @@ export default function LeaderboardScreen() {
     </View>
   );
 
+  const challengeCtaView = (
+    <TouchableOpacity
+      style={styles.challengeCta}
+      activeOpacity={0.9}
+      onPress={() => {
+        if (Platform.OS !== 'web') {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+        router.push('/challenges' as any);
+      }}
+    >
+      <View style={styles.challengeCtaIcon}>
+        <Trophy size={22} color={colors.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.challengeCtaTitleRow}>
+          <Text style={styles.challengeCtaTitle}>Challenges</Text>
+          {!isSubscribed && <ProBadge size="sm" />}
+        </View>
+        <Text style={styles.challengeCtaSubtitle}>
+          2-week rounds · win cash & Pro · watch the live board
+        </Text>
+      </View>
+      <ChevronRight size={18} color={colors.textLight} />
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navHeader}>
@@ -1609,6 +1636,7 @@ export default function LeaderboardScreen() {
         }
       >
       {topTabsView}
+      {challengeCtaView}
       {isLeaderboardLocked ? (
         <View style={styles.leaderboardLockCard}>
           <View style={styles.leaderboardLockIconWrap}>
@@ -2077,30 +2105,7 @@ export default function LeaderboardScreen() {
           }
         >
           {topTabsView}
-          <TouchableOpacity
-            style={styles.challengeCta}
-            activeOpacity={0.9}
-            onPress={() => {
-              if (Platform.OS !== 'web') {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-              router.push('/challenges' as any);
-            }}
-          >
-            <View style={styles.challengeCtaIcon}>
-              <Trophy size={22} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.challengeCtaTitleRow}>
-                <Text style={styles.challengeCtaTitle}>Challenges</Text>
-                {!isSubscribed && <ProBadge size="sm" />}
-              </View>
-              <Text style={styles.challengeCtaSubtitle}>
-                2-week rounds · win cash & Pro · watch the live board
-              </Text>
-            </View>
-            <ChevronRight size={18} color={colors.textLight} />
-          </TouchableOpacity>
+          {challengeCtaView}
           {!user?.id ? (
             <View style={styles.friendsSignInCard}>
               <View style={styles.friendsSignInIcon}>

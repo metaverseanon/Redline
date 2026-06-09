@@ -516,6 +516,44 @@ export default function ChallengesScreen() {
                 </View>
               </>
             )}
+
+            {/* Warming up — pre-live leaderboard teaser (pending, empty board) */}
+            {isPending && leaderboard.length === 0 && (
+              <>
+                <Text style={styles.sectionLabel}>LIVE LEADERBOARD</Text>
+                <View style={styles.card}>
+                  <View style={styles.warmupHeader}>
+                    <View style={styles.warmupIconWrap}>
+                      <Trophy size={20} color={colors.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.warmupTitle}>Warming up</Text>
+                      <Text style={styles.warmupText}>
+                        The board goes live when RedLine hits {challenge.requiredProCount} Pro
+                        members — {Math.max(0, challenge.requiredProCount - proCount)} to go. Rack up
+                        points the moment it starts to claim a top spot.
+                      </Text>
+                    </View>
+                  </View>
+                  {[1, 2, 3].map((rank) => (
+                    <View key={rank} style={styles.warmupGhostRow}>
+                      <View style={styles.lbRankBubble}>
+                        <Text style={styles.lbRankText}>{rank}</Text>
+                      </View>
+                      <View style={styles.warmupGhostBarWrap}>
+                        <View
+                          style={[
+                            styles.warmupGhostBar,
+                            { width: rank === 1 ? '72%' : rank === 2 ? '54%' : '38%' },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.warmupGhostPts}>—</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
           </>
         )}
 
@@ -751,6 +789,58 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.textLight,
       marginTop: 8,
       lineHeight: 16,
+    },
+    warmupHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 16,
+    },
+    warmupIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.cardLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    warmupTitle: {
+      fontSize: 13,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.text,
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    warmupText: {
+      fontSize: 11,
+      fontFamily: 'Orbitron_400Regular',
+      color: colors.textLight,
+      lineHeight: 16,
+    },
+    warmupGhostRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    warmupGhostBarWrap: {
+      flex: 1,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.background,
+      overflow: 'hidden',
+    },
+    warmupGhostBar: {
+      height: '100%',
+      borderRadius: 5,
+      backgroundColor: colors.cardLight,
+    },
+    warmupGhostPts: {
+      fontSize: 14,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.textLight,
+      minWidth: 24,
+      textAlign: 'right',
     },
     sectionLabel: {
       fontSize: 11,
