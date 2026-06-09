@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import app from "./backend/hono";
+import app, { startChallengesTicker } from "./backend/hono";
 
 const rawPort = process.env["PORT"];
 
@@ -22,5 +22,6 @@ serve(
   },
   (info) => {
     console.log(`[API] RedLine API listening on port ${info.port}`);
+    startChallengesTicker();
   },
 );

@@ -173,6 +173,32 @@ async function maybeActivate(challenge: ChallengeRow, proCount: number): Promise
   return { ...challenge, ...update, status: "active" };
 }
 
+/**
+ * Maximum points a single participant can possibly earn this round — the sum of
+ * every task's ceiling (progressive tasks cap at `points_cap`, completion tasks
+ * award `completion_points`). Used to end a round early the moment someone hits
+ * the perfect score.
+ *
+ * Must stay in lockstep with scoreUser(), which treats a progressive task with
+ * no positive `points_cap` as UNBOUNDED (`Number.MAX_SAFE_INTEGER`). If any
+ * progressive task is uncapped, a perfect score is unreachable, so we return
+ * `Infinity` to disable the max-points end condition (the 2-week timer still
+ * applies). Returns 0 only when there are no scorable points at all.
+ */
+function maxPointsForTasks(tasks: TaskRow[]): number {
+  let max = 0;
+  for (const t of tasks) {
+    if (t.scoring_type === "progressive") {
+      const cap = t.points_cap ?? 0;
+      if (cap <= 0) return Infinity; // uncapped → no perfect score possible
+      max += cap;
+    } else {
+      max += t.completion_points ?? 0;
+    }
+  }
+  return max;
+}
+
 type TaskBreakdown = {
   taskKey: string;
   title: string;
@@ -489,16 +515,24 @@ export const challengesRouter = createTRPCRouter({
 
       // Lifecycle transitions.
       challenge = await maybeActivate(challenge, proCount);
-      if (challenge.status === "active" && challenge.end_time && Date.now() > challenge.end_time) {
-        await finalizeChallenge(challenge);
-        challenge = (await getChallengeById(challenge.id)) ?? challenge;
-      }
 
       const tasks = await getTasks(challenge.id);
 
       let leaderboard: LeaderboardEntry[] = [];
       if (challenge.status === "active") {
         leaderboard = await computeLeaderboard(challenge);
+        // End conditions (whichever comes first):
+        //   (a) someone has earned every available point (perfect score), or
+        //   (b) the 2-week window has elapsed.
+        // Either one finalizes the round (crown winners + grant rewards).
+        const maxPoints = maxPointsForTasks(tasks);
+        const someoneMaxed =
+          maxPoints > 0 && leaderboard.some((e) => e.totalPoints >= maxPoints);
+        const windowElapsed = !!challenge.end_time && Date.now() > challenge.end_time;
+        if (someoneMaxed || windowElapsed) {
+          await finalizeChallenge(challenge);
+          challenge = (await getChallengeById(challenge.id)) ?? challenge;
+        }
       }
 
       let me: {

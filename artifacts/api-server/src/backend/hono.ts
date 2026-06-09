@@ -349,4 +349,37 @@ const cronCatchAll = (c: any) => {
 app.all("/cron/*", cronCatchAll);
 app.all("/api/cron/*", cronCatchAll);
 
+// --- In-process challenges ticker -------------------------------------------
+// On autoscale, instances scale to zero when idle, so we can't guarantee a
+// wall-clock cron. This interval drives the same lifecycle the cron endpoint
+// does (activate pending→active at the Pro threshold; finalize on perfect score
+// or once the 2-week window elapses) whenever an instance is warm — which, for
+// an app with steady traffic, is effectively always. Organic getActiveChallenge
+// calls (every leaderboard/challenges screen open) cover any cold gaps, and the
+// finalize mutex makes concurrent ticks across instances safe (exactly-once
+// reward grants). For a hard guarantee during zero-traffic windows, add an
+// external Scheduled Deployment that pings /api/cron/challenges-tick.
+const CHALLENGES_TICK_INTERVAL_MS = 5 * 60 * 1000;
+let challengesTicker: ReturnType<typeof setInterval> | null = null;
+
+export function startChallengesTicker(): void {
+  if (challengesTicker) return;
+  const tick = async () => {
+    try {
+      const caller = appRouter.createCaller({ req: new Request("http://internal/tick"), db: getDbConfig() });
+      const result = await caller.challenges.getActiveChallenge({});
+      console.log("[TICKER] challenges lifecycle", {
+        status: result.challenge?.status ?? null,
+        proCount: result.proCount,
+        at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[TICKER] challenges lifecycle failed:", error);
+    }
+  };
+  challengesTicker = setInterval(tick, CHALLENGES_TICK_INTERVAL_MS);
+  if (typeof challengesTicker.unref === "function") challengesTicker.unref();
+  console.log("[TICKER] challenges ticker started", { everyMs: CHALLENGES_TICK_INTERVAL_MS });
+}
+
 export default app;
