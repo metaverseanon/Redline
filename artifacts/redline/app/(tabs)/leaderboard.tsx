@@ -2105,7 +2105,6 @@ export default function LeaderboardScreen() {
           }
         >
           {topTabsView}
-          {challengeCtaView}
           {!user?.id ? (
             <View style={styles.friendsSignInCard}>
               <View style={styles.friendsSignInIcon}>
