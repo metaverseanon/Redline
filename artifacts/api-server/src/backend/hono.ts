@@ -7,6 +7,7 @@ import { createContext } from "./trpc/create-context";
 import { getDbConfig } from "./trpc/db";
 import { renderReplayVideo, ReplayRenderInputSchema } from "./replay/render";
 import { setUserProStatus, backfillProStatus } from "./trpc/routes/subscription";
+import { redlineLogoHandler } from "./assets/redline-logo";
 
 const BACKEND_VERSION = "1.3.0";
 console.log(`[BACKEND] Starting RedLine API v${BACKEND_VERSION}`);
@@ -27,6 +28,9 @@ app.use("/trpc/*", trpcHandler);
 app.get("/", (c) => c.json({ status: "ok", message: "API is running", version: BACKEND_VERSION }));
 app.get("/api", (c) => c.json({ status: "ok", message: "API is running", version: BACKEND_VERSION }));
 app.get("/api/healthz", (c) => c.json({ status: "ok", version: BACKEND_VERSION }));
+
+app.get("/api/assets/redline-logo.v1.png", redlineLogoHandler);
+app.get("/assets/redline-logo.v1.png", redlineLogoHandler);
 
 const MAX_CONCURRENT_RENDERS = 2;
 let activeRenders = 0;
