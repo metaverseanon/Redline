@@ -53,3 +53,9 @@ id = "rjkPOc0-ycmBFTNASQi0c"
 uri = "file://attached_assets/generated_images/badge_3rd_bronze.png"
 type = "image"
 title = "3rd Place — Bronze"
+
+[[outputs]]
+id = "3zdmoDGtlDtcCbjMFZWRJ"
+uri = "file://exports/redline-challenges-email.zip"
+type = "unspecified"
+title = "RedLine Challenges Email (HTML, zipped)"
