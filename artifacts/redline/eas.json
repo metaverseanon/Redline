@@ -25,7 +25,7 @@
       "autoIncrement": false,
       "env": {
         "EXPO_PUBLIC_RORK_API_BASE_URL": "https://trip-stats-tracker.replit.app",
-        "EXPO_PUBLIC_TIKTOK_APP_ID": "7645250796318687240",
+        "EXPO_PUBLIC_TIKTOK_APP_ID": "7619279783713128455",
         "EXPO_PUBLIC_TIKTOK_ACCESS_TOKEN": "TTZXBvxhYKs77MlQ8PUHQDubESoJpl1Z"
       },
       "ios": {
