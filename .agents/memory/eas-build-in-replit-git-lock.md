@@ -25,6 +25,16 @@ secret (no interactive login).
 
 **How to apply:** any time you trigger an EAS build/submit from this environment.
 
+## Default every TestFlight push: bump `expo.version`, not just buildNumber
+
+For RedLine specifically, every previously-submitted `expo.version` train is
+already closed on App Store Connect, so reusing a version with only a new
+`ios.buildNumber` reliably fails auto-submit with
+`SUBMISSION_SERVICE_IOS_OLD_APP_VERSION`. **Default action for any "push to
+TestFlight" request: bump the patch `expo.version` (e.g. 1.9.23 → 1.9.24) in
+app.json before building** — do not waste a build by bumping only buildNumber.
+Verify the submission status after queuing (don't assume `--no-wait` success).
+
 ## Submit failure: closed ASC version train (bump version, not just build number)
 
 If `--auto-submit` (or a manual `eas submit`) ERRORs while the build itself
