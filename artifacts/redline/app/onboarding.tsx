@@ -15,9 +15,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Activity, Crown, Compass, UserCheck, ChevronRight, Flame, Target, Radio, Trophy, Star, MessageSquare, Award, Eye, Bell, Share2, Flag, TrendingUp, Music } from 'lucide-react-native';
+import { Activity, Crown, UserCheck, ChevronRight, Flame, Target, Trophy, Star, Eye } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
-import OnboardSoundtrackPreview from '@/components/OnboardSoundtrackPreview';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ONBOARDING_KEY = 'onboarding_completed';
@@ -48,89 +47,17 @@ const pages: OnboardingPage[] = [
     decorIcon: <Target size={20} color="#CC0000" />,
     title: 'Climb The',
     highlight: 'Leaderboard',
-    description: 'Compete with drivers worldwide on top speed, distance and acceleration. Global rankings, friends boards and Pro filters are part of RedLine Pro.',
+    description: 'Compete with drivers worldwide on top speed, distance and acceleration — plus private boards with friends.',
     gradient: ['#0a0a0a', '#000000'],
   },
   {
     id: 'achievements',
     icon: <Trophy size={48} color="#FFFFFF" strokeWidth={1.5} />,
     decorIcon: <Star size={20} color="#CC0000" />,
-    title: 'Unlock',
-    highlight: 'Achievements',
-    description: 'Complete driving challenges across speed, distance, streaks and more. Track your progress and show off your badges.',
+    title: 'Take On',
+    highlight: 'Challenges',
+    description: 'Complete speed, distance and streak challenges, earn badges, and share your best runs on the feed.',
     gradient: ['#0a0a00', '#000000'],
-  },
-  {
-    id: 'feed',
-    icon: <MessageSquare size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Flame size={20} color="#CC0000" />,
-    title: 'Share On',
-    highlight: 'The Feed',
-    description: 'Post your best runs, share drive highlights, and see what other drivers are up to in real time.',
-    gradient: ['#0a0000', '#000000'],
-  },
-  {
-    id: 'challenges',
-    icon: <Award size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Target size={20} color="#CC0000" />,
-    title: 'Complete',
-    highlight: 'Challenges',
-    description: 'Take on speed, distance, and streak challenges. Earn badges and show off your driving milestones.',
-    gradient: ['#0d0d00', '#000000'],
-  },
-  {
-    id: 'ping',
-    icon: <Compass size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Radio size={20} color="#CC0000" />,
-    title: 'Find Nearby',
-    highlight: 'Drivers',
-    description: 'Ping drivers around you, get directions to meet up and cruise together.',
-    gradient: ['#0d0000', '#000000'],
-  },
-  {
-    id: 'friends-boards',
-    icon: <Bell size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Bell size={20} color="#CC0000" />,
-    title: 'Friends Board',
-    highlight: 'Alerts',
-    description: 'Create private leaderboards with friends and get a push the moment anyone joins or leaves your board.',
-    gradient: ['#0a0010', '#000000'],
-  },
-  {
-    id: 'share-invite',
-    icon: <Share2 size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Share2 size={20} color="#CC0000" />,
-    title: 'Invite Anyone',
-    highlight: 'In Two Taps',
-    description: 'Share private boards through Messages, WhatsApp, Mail or anywhere with the native iOS share sheet.',
-    gradient: ['#001010', '#000000'],
-  },
-  {
-    id: 'custom-challenges',
-    icon: <Flag size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Flag size={20} color="#CC0000" />,
-    title: 'Set Custom',
-    highlight: 'Challenges',
-    description: 'Pick a goal — top speed, distance, drives or G-force — set the target and timer, and race your crew to the finish.',
-    gradient: ['#100a00', '#000000'],
-  },
-  {
-    id: 'rank-up',
-    icon: <TrendingUp size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Trophy size={20} color="#CC0000" />,
-    title: 'Celebrate Every',
-    highlight: 'Rank Up',
-    description: 'Climb the leaderboard and the app lights up with confetti, haptics and a shiny new-rank card. Earned, not given.',
-    gradient: ['#10000a', '#000000'],
-  },
-  {
-    id: 'drive-soundtrack',
-    icon: <Music size={48} color="#FFFFFF" strokeWidth={1.5} />,
-    decorIcon: <Music size={20} color="#CC0000" />,
-    title: 'Score Your',
-    highlight: 'Drive',
-    description: 'Add a soundtrack to your recap. Search any song and lay it over your drive video, then share it. Part of RedLine Pro.',
-    gradient: ['#0a0010', '#000000'],
   },
   {
     id: 'account',
@@ -343,7 +270,6 @@ export default function OnboardingScreen() {
                 <Text style={styles.title}>{page.title}</Text>
                 <Text style={styles.highlight}>{page.highlight}</Text>
                 <Text style={styles.description}>{page.description}</Text>
-                {page.id === 'drive-soundtrack' && <OnboardSoundtrackPreview />}
               </Animated.View>
             </View>
           </View>
