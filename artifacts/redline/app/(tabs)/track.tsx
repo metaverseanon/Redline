@@ -13,7 +13,7 @@ import DriveReplayModal from '@/components/DriveReplayModal';
 import AuthGate from '@/components/AuthGate';
 
 const TRACK_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
-const FREE_TRIP_LIMIT = 1;
+const FREE_TRIP_LIMIT = 3;
 
 let MapView: React.ComponentType<any> | null = null;
 let Polyline: React.ComponentType<any> | null = null;

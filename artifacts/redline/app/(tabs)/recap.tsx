@@ -44,6 +44,7 @@ import AnimatedCard from '@/components/AnimatedCard';
 import WeeklyRecapCard from '@/components/WeeklyRecapCard';
 import DriveReplayModal from '@/components/DriveReplayModal';
 import AICoachCard from '@/components/AICoachCard';
+import FirstRecapPaywallTrigger from '@/components/FirstRecapPaywallTrigger';
 import ProBadge from '@/components/ProBadge';
 import SoundtrackBadge from '@/components/SoundtrackBadge';
 import TrackPickerModal from '@/components/TrackPickerModal';
@@ -917,6 +918,7 @@ export default function RecapScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <FirstRecapPaywallTrigger />
       <View style={styles.navHeader}>
         <Text style={styles.navTitle}>Recap</Text>
       </View>
