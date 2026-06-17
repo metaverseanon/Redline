@@ -89,6 +89,21 @@ export default function TrackScreen() {
     }
   }, [presentPaywall, getLastPaywallError]);
 
+  const handleCrownPress = useCallback(async () => {
+    try {
+      const result = await presentPaywall('track_crown');
+      if (result === 'not_presented' || result === 'error') {
+        const lastErr = getLastPaywallError?.();
+        Alert.alert(
+          'Subscription unavailable',
+          lastErr || 'The paywall could not be opened. Please check your connection and try again.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Subscription unavailable', e?.message ?? 'Please try again.');
+    }
+  }, [presentPaywall, getLastPaywallError]);
+
   const handleStartPress = useCallback(() => {
     if (!user) {
       setShowAuthGate(true);
@@ -525,6 +540,15 @@ export default function TrackScreen() {
             testID="cancel-tracking-button"
           >
             <X size={18} color="#CC0000" />
+          </TouchableOpacity>
+        ) : !isSubscribed ? (
+          <TouchableOpacity
+            style={[sStyles.navBtn, { backgroundColor: isDark ? '#2A2410' : '#FFF8E1', borderColor: 'rgba(255,215,0,0.5)' }]}
+            onPress={handleCrownPress}
+            activeOpacity={0.7}
+            testID="track-pro-crown-button"
+          >
+            <Crown size={18} color="#FFD700" fill="#FFD700" />
           </TouchableOpacity>
         ) : (
           canShowMap ? <View style={sStyles.navBtnPlaceholder} /> : null
