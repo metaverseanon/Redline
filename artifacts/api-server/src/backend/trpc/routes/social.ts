@@ -5,6 +5,34 @@ import { cachedOrFetch } from "../cache";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
+/**
+ * Fallback display names for users that no longer exist in the `users` table
+ * (e.g. deleted accounts). Their drives in `activity_feed` would otherwise show
+ * "Driver", but the linked `trips` rows still carry a denormalized `user_name`
+ * captured at drive time. Returns a map of user_id -> last-known user_name.
+ */
+async function fetchTripUserNames(userIds: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (userIds.length === 0 || !isDbConfigured()) return result;
+
+  try {
+    const idsParam = userIds.map(id => `"${id}"`).join(",");
+    const url = `${getSupabaseRestUrl("trips")}?user_id=in.(${idsParam})&select=user_id,user_name&user_name=not.is.null&order=created_at.desc`;
+    const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+    if (!resp.ok) return result;
+    const rows: { user_id: string; user_name?: string }[] = await resp.json();
+    for (const row of rows) {
+      const name = row.user_name?.trim();
+      if (name && !result.has(row.user_id)) {
+        result.set(row.user_id, name);
+      }
+    }
+  } catch (err) {
+    console.error("[SOCIAL] fetchTripUserNames error:", err);
+  }
+  return result;
+}
+
 async function sendFollowNotification(followerId: string, followingId: string): Promise<void> {
   if (!isDbConfigured()) return;
 
@@ -437,6 +465,9 @@ export const socialRouter = createTRPCRouter({
           }
         }
 
+        const missingNameIds = feedUserIds.filter(id => !userMap.get(id)?.displayName?.trim());
+        const fallbackNames = await fetchTripUserNames(missingNameIds);
+
         const activityIds = feedRows.map(r => r.id);
         const activityRevCounts: Record<string, number> = {};
         const userActivityRevs: Set<string> = new Set();
@@ -459,7 +490,7 @@ export const socialRouter = createTRPCRouter({
         return feedRows.map(row => ({
           id: row.id,
           userId: row.user_id,
-          userName: userMap.get(row.user_id)?.displayName ?? "Driver",
+          userName: userMap.get(row.user_id)?.displayName?.trim() || fallbackNames.get(row.user_id) || "Driver",
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           type: row.type,
           tripId: row.trip_id,
@@ -852,6 +883,9 @@ export const socialRouter = createTRPCRouter({
           });
         }
 
+        const missingNameIds = discoverUserIds.filter(id => !userMap.get(id)?.displayName?.trim());
+        const fallbackNames = await fetchTripUserNames(missingNameIds);
+
         const activityIds = selected.map(r => r.id);
         const activityRevCounts: Record<string, number> = {};
         const userActivityRevs: Set<string> = new Set();
@@ -875,7 +909,7 @@ export const socialRouter = createTRPCRouter({
         return selected.map(row => ({
           id: row.id,
           userId: row.user_id,
-          userName: userMap.get(row.user_id)?.displayName ?? "Driver",
+          userName: userMap.get(row.user_id)?.displayName?.trim() || fallbackNames.get(row.user_id) || "Driver",
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           type: row.type,
           tripId: row.trip_id,
