@@ -14,13 +14,13 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, router } from 'expo-router';
-import { User, Car, ChevronDown, ChevronRight, LogOut, Check, Navigation, Search, Camera, Plus, X, Image as ImageIcon, Eye, EyeOff, CirclePlus } from 'lucide-react-native';
+import { User, Car, ChevronDown, ChevronRight, LogOut, Check, Navigation, Search, Camera, Plus, X, Image as ImageIcon, Eye, EyeOff, CirclePlus, Flame } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '@/providers/SettingsProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useUser } from '@/providers/UserProvider';
-import { useSubscription } from '@/lib/revenuecat';
+import { useSubscription, formatProDuration } from '@/lib/revenuecat';
 import ProBadge from '@/components/ProBadge';
 import { useTrips } from '@/providers/TripProvider';
 import * as Google from 'expo-auth-session/providers/google';
@@ -49,7 +49,8 @@ const isValidImageUri = (uri: string | undefined | null): boolean => {
 
 export default function ProfileScreen() {
   const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, syncImagesToBackend } = useUser();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, proSinceMillis } = useSubscription();
+  const proDurationLabel = formatProDuration(proSinceMillis);
   const { syncUnsyncedTrips } = useTrips();
   const [authMode, setAuthMode] = useState<'signup' | 'signin'>('signin');
   const { colors } = useSettings();
@@ -872,6 +873,12 @@ export default function ProfileScreen() {
           <Text style={styles.profileName}>{displayName || 'Your Name'}</Text>
           {isSubscribed && <ProBadge size="md" />}
         </View>
+        {isSubscribed && proDurationLabel ? (
+          <View style={styles.proStreakChip}>
+            <Flame color="#FFD700" size={13} fill="#FFD700" />
+            <Text style={styles.proStreakText}>{proDurationLabel}</Text>
+          </View>
+        ) : null}
         <Text style={styles.tapToChangeText}>TAP PHOTO TO CHANGE</Text>
       </View>
 
@@ -2011,6 +2018,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textLight,
     marginTop: 6,
     letterSpacing: 1.5,
+  },
+  proStreakChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,215,0,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.45)',
+  },
+  proStreakText: {
+    fontSize: 11,
+    fontFamily: 'Orbitron_700Bold',
+    color: '#FFD700',
+    letterSpacing: 0.5,
   },
   sectionHeaderRow: {
     flexDirection: 'row',

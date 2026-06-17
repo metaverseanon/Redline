@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Platform } from "react-native";
 import { Crown, Settings as SettingsIcon, RefreshCw } from "lucide-react-native";
-import { useSubscription } from "@/lib/revenuecat";
+import { useSubscription, formatProDuration } from "@/lib/revenuecat";
 import { useSettings } from "@/providers/SettingsProvider";
 import type { ThemeColors } from "@/constants/colors";
 
@@ -12,6 +12,7 @@ export default function SubscriptionSection() {
     isAvailable,
     isLoading,
     isSubscribed,
+    proSinceMillis,
     monthlyPackage,
     yearlyPackage,
     presentPaywall,
@@ -75,13 +76,20 @@ export default function SubscriptionSection() {
     );
   }
 
+  const proDurationLabel = formatProDuration(proSinceMillis);
+
   if (isSubscribed) {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>SUBSCRIPTION</Text>
         <View style={styles.proBanner}>
           <Crown color="#FFD700" size={20} />
-          <Text style={styles.proBannerText}>RedLine App Pro Active</Text>
+          <View style={styles.proBannerTextWrap}>
+            <Text style={styles.proBannerText}>RedLine App Pro Active</Text>
+            {proDurationLabel ? (
+              <Text style={styles.proBannerSubText}>{proDurationLabel}</Text>
+            ) : null}
+          </View>
         </View>
         <TouchableOpacity style={styles.manageButton} onPress={handleManage} activeOpacity={0.8}>
           <SettingsIcon color={colors.accent} size={18} />
@@ -150,11 +158,22 @@ function createStyles(colors: ThemeColors) {
       borderColor: "rgba(255,215,0,0.45)",
       marginBottom: 12,
     },
+    proBannerTextWrap: {
+      flex: 1,
+    },
     proBannerText: {
       color: "#FFD700",
       fontSize: 14,
       fontWeight: "700" as const,
       letterSpacing: 0.6,
+    },
+    proBannerSubText: {
+      color: "#FFD700",
+      opacity: 0.75,
+      fontSize: 11,
+      fontWeight: "600" as const,
+      letterSpacing: 0.4,
+      marginTop: 2,
     },
     manageButton: {
       flexDirection: "row" as const,

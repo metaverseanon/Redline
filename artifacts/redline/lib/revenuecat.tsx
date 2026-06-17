@@ -16,6 +16,21 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "RedLine App Pro";
 export const REVENUECAT_PACKAGE_MONTHLY = "monthly";
 export const REVENUECAT_PACKAGE_YEARLY = "yearly";
 
+export function formatProDuration(sinceMillis: number | null | undefined): string | null {
+  if (!sinceMillis) return null;
+  const diff = Date.now() - sinceMillis;
+  if (diff < 0) return null;
+  const days = Math.floor(diff / 86_400_000);
+  if (days < 1) return "Pro since today";
+  if (days < 30) return `Pro for ${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `Pro for ${months} month${months === 1 ? "" : "s"}`;
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+  if (remMonths === 0) return `Pro for ${years} year${years === 1 ? "" : "s"}`;
+  return `Pro for ${years}y ${remMonths}mo`;
+}
+
 const PRO_OVERRIDE_EMAILS: string[] = [];
 
 function hasProOverride(email: string | null | undefined): boolean {
@@ -318,9 +333,11 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
   }, [queryClient]);
 
   const customerInfo = customerInfoQuery.data;
-  const isSubscribedFromRC = !!customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+  const proEntitlement = customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+  const isSubscribedFromRC = !!proEntitlement;
   const isSubscribedFromOverride = hasProOverride(userEmail);
   const isSubscribed = isSubscribedFromRC || isSubscribedFromOverride;
+  const proSinceMillis: number | null = proEntitlement?.originalPurchaseDateMillis ?? null;
 
   const currentOffering = offeringsQuery.data?.current ?? null;
   const monthlyPackage = currentOffering?.availablePackages?.find(
@@ -338,6 +355,7 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
     monthlyPackage,
     yearlyPackage,
     isSubscribed,
+    proSinceMillis,
     isLoading: customerInfoQuery.isLoading || offeringsQuery.isLoading,
     purchase: purchaseMutation.mutateAsync,
     restore: restoreMutation.mutateAsync,
