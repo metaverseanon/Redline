@@ -19,6 +19,7 @@ import PaywallAnalyticsBridge from "@/components/PaywallAnalyticsBridge";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
+import { initializeMeta, metaIdentify } from "@/lib/meta";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -42,6 +43,11 @@ void initializeTikTok()
   .then(() => tiktokTrackAppOpen())
   .catch((err) => {
     console.warn('[TIKTOK] Initialization failed:', err?.message ?? err);
+  });
+
+void initializeMeta()
+  .catch((err) => {
+    console.warn('[META] Initialization failed:', err?.message ?? err);
   });
 
 if (Platform.OS !== 'web') {
@@ -243,6 +249,7 @@ function AnalyticsSync() {
       identify(user.id);
       track('user_signed_in', { userId: user.id });
       void tiktokIdentify(user.id, user.email);
+      void metaIdentify(user.id, user.email);
     }
   }, [user?.id, user?.email, identify, track]);
 

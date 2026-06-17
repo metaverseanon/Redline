@@ -4,4 +4,5 @@
 - [Supabase REST once-only mutex](supabase-rest-once-only-mutex.md) — no DB transactions over REST; use conditional PATCH (`status=eq.X` + `return=representation`) as a mutex so reward/grant side-effects run exactly once.
 - [Challenges round lifecycle](challenges-lifecycle.md) — transitions are side effects of getActiveChallenge (traffic-driven + 5-min in-process ticker; autoscale = no cron); end = perfect score OR 2-wk timer; maxPointsForTasks must mirror scoreUser (uncapped progressive ⇒ Infinity, disable early-finalize).
 - [EAS build in Replit (git lock)](eas-build-in-replit-git-lock.md) — `eas build` fails on `.git/index.lock` in the sandbox; prefix `EAS_NO_VCS=1`, use `--no-wait --auto-submit`, delete stale lock via code-exec fs.unlinkSync.
+- [Meta fbsdk-next ATT gating](meta-fbsdk-att-gating.md) — keep `isAutoInitEnabled:false`; Meta SDK inits only via `initializeMeta()` after ATT resolves, else advertiser-ID collection starts before consent.
 - [Email image hosting](email-image-hosting.md) — email images need public HTTPS URLs (attached_assets/ + data-URIs fail); serve from deployed api-server, version the path, and redeploy prod before sending.

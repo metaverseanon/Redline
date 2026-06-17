@@ -165,6 +165,13 @@ export default function OnboardingScreen() {
       console.warn('[ONBOARDING] tiktok CompleteTutorial failed:', e);
     }
 
+    try {
+      const { metaTrackCompleteTutorial } = await import('@/lib/meta');
+      void metaTrackCompleteTutorial();
+    } catch (e) {
+      console.warn('[ONBOARDING] meta CompleteTutorial failed:', e);
+    }
+
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 300,

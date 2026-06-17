@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
+import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
 import { trpc } from "@/lib/trpc";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
@@ -203,9 +204,11 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         const safeValue = value > 0 ? value : 0.01;
         void tiktokTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
         void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
+        void metaTrackSubscribe({ value: safeValue, currency, productId, productName, orderId });
+        void metaTrackPurchase({ value: safeValue, currency, productId, orderId });
         logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
       } catch (err) {
-        console.warn("[RC] post-purchase tiktok tracking failed:", err);
+        console.warn("[RC] post-purchase ad tracking failed:", err);
       }
       return customerInfo;
     },

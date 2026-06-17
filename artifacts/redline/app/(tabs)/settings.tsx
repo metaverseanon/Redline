@@ -1198,6 +1198,38 @@ export default function SettingsScreen() {
                   </View>
                   <ChevronRight size={20} color={colors.textLight} />
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.linkItem}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    try {
+                      const m = await import('@/lib/meta');
+                      await m.metaTrackCompleteTutorial();
+                      await m.metaTrackSubscribe({
+                        value: 9.99,
+                        currency: 'USD',
+                        productId: 'test_monthly',
+                        productName: 'RedLine Pro (Test)',
+                        orderId: `test_${Date.now()}`,
+                      });
+                      Alert.alert(
+                        'Meta test events sent',
+                        'Sent CompleteTutorial + Subscribe ($9.99 USD).\n\nCheck Meta Events Manager → Test Events in 1–5 min.',
+                      );
+                    } catch (e: any) {
+                      Alert.alert('Meta test failed', String(e?.message ?? e));
+                    }
+                  }}
+                >
+                  <View style={styles.linkContent}>
+                    <View style={styles.settingIconContainer}>
+                      <ZapIcon size={20} color={colors.accent} />
+                    </View>
+                    <Text style={styles.linkText}>Send Meta Test Events</Text>
+                  </View>
+                  <ChevronRight size={20} color={colors.textLight} />
+                </TouchableOpacity>
               </View>
             </>
           );

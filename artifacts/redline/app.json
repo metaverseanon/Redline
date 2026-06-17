@@ -108,6 +108,17 @@
           "userTrackingPermission": "This identifier will be used to measure ad performance and deliver personalized ads."
         }
       ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "1331456418353881",
+          "clientToken": "83b42928de06c5197fe405fa19b9c4ad",
+          "displayName": "RedLine",
+          "advertiserIDCollectionEnabled": true,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": false
+        }
+      ],
       "./plugins/with-tiktok-modular-headers.js"
     ],
     "experiments": {

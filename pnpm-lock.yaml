@@ -518,6 +518,9 @@ importers:
       react-native-appsflyer:
         specifier: ^6.17.9
         version: 6.17.9
+      react-native-fbsdk-next:
+        specifier: ^13.4.3
+        version: 13.4.3(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
       react-native-gesture-handler:
         specifier: ~2.28.0
         version: 2.28.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -4952,6 +4955,16 @@ packages:
   react-native-appsflyer@6.17.9:
     resolution: {integrity: sha512-oEddwSsVL8D3ki8ayWZV34GyORAxvL1BXq3mL1xB8Hdfg+xxLyjAXSvWbj0t3E3NJ2KrgLRf/hbTlsPltfo/Uw==}
 
+  react-native-fbsdk-next@13.4.3:
+    resolution: {integrity: sha512-xGymFmocik7/159i6x/bGx4AHuEk3MFMkVl4MlW7JDuN8LIpbGU76WljEOO+Ucdn248nDlo1EG//CXHMGxZTMg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      expo: '>=47.0.0'
+      react-native: '>=0.63.3'
+    peerDependenciesMeta:
+      expo:
+        optional: true
+
   react-native-gesture-handler@2.28.0:
     resolution: {integrity: sha512-0msfJ1vRxXKVgTgvL+1ZOoYw3/0z1R+Ked0+udoJhyplC2jbVKIJ8Z1bzWdpQRCV3QcQ87Op0zJVE5DhKK2A0A==}
     peerDependencies:
@@ -5522,6 +5535,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -11170,6 +11184,12 @@ snapshots:
   react-is@19.2.5: {}
 
   react-native-appsflyer@6.17.9: {}
+
+  react-native-fbsdk-next@13.4.3(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)):
+    dependencies:
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
+    optionalDependencies:
+      expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
   react-native-gesture-handler@2.28.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
