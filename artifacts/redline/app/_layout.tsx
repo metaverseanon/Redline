@@ -20,6 +20,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import { initializeMeta, metaIdentify } from "@/lib/meta";
+import { appsflyerSetCustomerUserId } from "@/lib/appsflyer";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -250,6 +251,7 @@ function AnalyticsSync() {
       track('user_signed_in', { userId: user.id });
       void tiktokIdentify(user.id, user.email);
       void metaIdentify(user.id, user.email);
+      appsflyerSetCustomerUserId(user.id);
     }
   }, [user?.id, user?.email, identify, track]);
 

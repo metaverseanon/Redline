@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
 import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
+import { appsflyerTrackSubscribe, appsflyerTrackPurchase } from "@/lib/appsflyer";
 import { trpc } from "@/lib/trpc";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
@@ -221,6 +222,8 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
         void metaTrackSubscribe({ value: safeValue, currency, productId, productName, orderId });
         void metaTrackPurchase({ value: safeValue, currency, productId, orderId });
+        void appsflyerTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
+        void appsflyerTrackPurchase({ value: safeValue, currency, productId, orderId });
         logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
       } catch (err) {
         console.warn("[RC] post-purchase ad tracking failed:", err);
