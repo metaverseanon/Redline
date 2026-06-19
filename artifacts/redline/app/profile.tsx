@@ -28,6 +28,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { trpcClient } from '@/lib/trpc';
+import { getDisplayEmail } from '@/lib/appleEmail';
 import { COUNTRIES, getCitiesForCountry } from '@/constants/countries';
 import { UserCar } from '@/types/user';
 import SubscriptionSection from '@/components/SubscriptionSection';
@@ -574,7 +575,7 @@ export default function ProfileScreen() {
     setIsSubmitting(true);
     try {
       if (isAuthenticated) {
-        await updateProfile({ email, displayName, profilePicture: profilePicture || undefined, bio: bio.trim() || undefined });
+        await updateProfile({ displayName, profilePicture: profilePicture || undefined, bio: bio.trim() || undefined, ...(user?.authProvider === 'apple' ? {} : { email }) });
         if (user?.id) {
           try {
             await trpcClient.user.updateBio.mutate({ userId: user.id, bio: bio.trim() });
@@ -947,15 +948,28 @@ export default function ProfileScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>EMAIL</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            placeholderTextColor={colors.textLight}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+          {user?.authProvider === 'apple' ? (
+            <View style={[styles.input, { justifyContent: 'center' }]}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  color: getDisplayEmail(user) ? colors.text : colors.textLight,
+                }}
+              >
+                {getDisplayEmail(user) || 'Hidden — using your Apple private email'}
+              </Text>
+            </View>
+          ) : (
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor={colors.textLight}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          )}
         </View>
 
         <View style={styles.inputGroup}>

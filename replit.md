@@ -113,7 +113,14 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   ownership). Scoped to apple only — the Google/email "already exists" rejection is
   unchanged. No server-side `identityToken` verification (consistent with the
   app's client-asserted-userId trust model). Requires a native build to test
-  (not Expo Go / web).
+  (not Expo Go / web). The synthetic email is the durable identity key and is
+  never shown to the user: the real email Apple returns on the first/re-link auth
+  is captured into a **client-only** `UserProfile.appleEmail` (AsyncStorage) and
+  surfaced via `lib/appleEmail.ts` `getDisplayEmail()` on the settings account
+  card + profile EMAIL row (read-only for Apple users, excluded from
+  `updateProfile` so the key can't be overwritten). It resets on reinstall unless
+  the user re-links — persisting it cross-device would need a Supabase column +
+  server sync.
 
 - **Pro social features (additive, never gate the free path):**
   - **Friends-only private leaderboards** — Pro users create boards and invite by

@@ -13,6 +13,7 @@ import { useSubscription } from '@/lib/revenuecat';
 import { useAchievements } from '@/providers/AchievementProvider';
 import { useState, useEffect } from 'react';
 import { trpc, trpcClient } from '@/lib/trpc';
+import { getDisplayEmail } from '@/lib/appleEmail';
 import DailyCard from '@/components/DailyCard';
 
 export default function SettingsScreen() {
@@ -742,7 +743,7 @@ export default function SettingsScreen() {
                 {isAuthenticated ? (
                   <>
                     <Text style={styles.profileName}>{user?.displayName}</Text>
-                    <Text style={styles.profileEmail}>{user?.email}</Text>
+                    <Text style={styles.profileEmail}>{getDisplayEmail(user) || (user?.authProvider === 'apple' ? 'Signed in with Apple' : user?.email)}</Text>
                   </>
                 ) : (
                   <>

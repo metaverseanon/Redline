@@ -588,15 +588,22 @@ export const [UserProvider, useUser] = createContextHook(() => {
       base?.displayName ||
       `Driver${appleUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)}`;
 
+    // Apple only hands back the real email on the FIRST authorization (and only
+    // if the user chose "Share My Email"). Capture it for display when present;
+    // otherwise preserve any previously captured one. The account identity key
+    // stays the synthetic `identityEmail` so re-login always resolves correctly.
+    const capturedAppleEmail = email?.trim() || base?.appleEmail;
+
     const localId = base?.id ?? Date.now().toString();
     const newUser: UserProfile = base
-      ? { ...base, displayName: base.displayName || fallbackName, authProvider: 'apple' }
+      ? { ...base, displayName: base.displayName || fallbackName, authProvider: 'apple', appleEmail: capturedAppleEmail }
       : {
           id: localId,
           email: identityEmail,
           displayName: fallbackName,
           createdAt: Date.now(),
           authProvider: 'apple',
+          appleEmail: capturedAppleEmail,
         };
 
     try {
