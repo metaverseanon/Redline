@@ -18,6 +18,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.redline-app",
       "buildNumber": "62",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
         "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to use your location.",
@@ -72,6 +73,7 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-apple-authentication",
       [
         "expo-location",
         {

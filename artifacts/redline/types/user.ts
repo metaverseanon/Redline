@@ -24,7 +24,7 @@ export interface UserProfile {
   createdAt: number;
   pushToken?: string;
   notificationsEnabled?: boolean;
-  authProvider?: 'email' | 'google';
+  authProvider?: 'email' | 'google' | 'apple';
   timezone?: string;
 }
 

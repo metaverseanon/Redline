@@ -24,6 +24,7 @@ import { useSubscription, formatProDuration } from '@/lib/revenuecat';
 import ProBadge from '@/components/ProBadge';
 import { useTrips } from '@/providers/TripProvider';
 import * as Google from 'expo-auth-session/providers/google';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { trpcClient } from '@/lib/trpc';
@@ -48,7 +49,7 @@ const isValidImageUri = (uri: string | undefined | null): boolean => {
 };
 
 export default function ProfileScreen() {
-  const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, syncImagesToBackend } = useUser();
+  const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, signInWithApple, syncImagesToBackend } = useUser();
   const { isSubscribed, proSinceMillis } = useSubscription();
   const proDurationLabel = formatProDuration(proSinceMillis);
   const { syncUnsyncedTrips } = useTrips();
@@ -113,6 +114,8 @@ export default function ProfileScreen() {
   const [resetStep, setResetStep] = useState<'email' | 'code' | 'newPassword'>('email');
   const [isResetting, setIsResetting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [brandSearch, setBrandSearch] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [newBrandSearch, setNewBrandSearch] = useState('');
@@ -168,6 +171,46 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Google prompt error:', error);
       Alert.alert('Error', 'Failed to open Google sign in. Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    void AppleAuthentication.isAvailableAsync()
+      .then(setIsAppleAvailable)
+      .catch(() => setIsAppleAvailable(false));
+  }, []);
+
+  const handleAppleButtonPress = async () => {
+    if (isAppleLoading) return;
+    setIsAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const fullName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName]
+            .filter(Boolean)
+            .join(' ')
+            .trim()
+        : null;
+      await signInWithApple(credential.user, credential.email, fullName || null);
+      console.log('[PROFILE] Apple sign-in successful, triggering trip sync...');
+      void syncUnsyncedTrips();
+      Alert.alert('Success', 'Signed in with Apple successfully');
+      router.back();
+    } catch (error: any) {
+      if (error?.code === 'ERR_REQUEST_CANCELED') {
+        // User canceled the Apple sign-in sheet — not an error.
+        return;
+      }
+      console.error('Apple sign in error:', error);
+      Alert.alert('Error', 'Failed to sign in with Apple. Please try again.');
+    } finally {
+      setIsAppleLoading(false);
     }
   };
 
@@ -1760,6 +1803,16 @@ export default function ProfileScreen() {
         )}
       </TouchableOpacity>
 
+      {Platform.OS === 'ios' && isAppleAvailable && (
+        <AppleAuthentication.AppleAuthenticationButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+          cornerRadius={12}
+          style={styles.appleButton}
+          onPress={handleAppleButtonPress}
+        />
+      )}
+
       <TouchableOpacity
         style={styles.switchAuthButton}
         onPress={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
@@ -2527,6 +2580,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Orbitron_500Medium',
     color: colors.text,
+  },
+  appleButton: {
+    width: '100%',
+    height: 52,
+    marginTop: 12,
   },
   forgotPasswordButton: {
     marginTop: 12,

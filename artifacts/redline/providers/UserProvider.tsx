@@ -560,6 +560,70 @@ export const [UserProvider, useUser] = createContextHook(() => {
     return { success: true, user: newUser };
   }, []);
 
+  const signInWithApple = useCallback(async (
+    appleUserId: string,
+    email?: string | null,
+    fullName?: string | null,
+  ) => {
+    // Apple only returns the email/name on the FIRST authorization. On every
+    // subsequent sign-in we only get the stable `appleUserId`, so we key the
+    // account on a deterministic synthetic email derived from that id. This
+    // guarantees re-login (and reinstall) always resolves to the same account.
+    const identityEmail = `apple_${appleUserId}@privaterelay.appleid.com`.toLowerCase();
+
+    // Start from any locally-stored profile for this identity so local-only
+    // fields are preserved, but ALWAYS reconcile the id with the backend below
+    // (a stale throwaway id from a previous transient failure must not persist).
+    let base: UserProfile | null = null;
+    const stored = await AsyncStorage.getItem(USER_KEY);
+    if (stored) {
+      const userData = JSON.parse(stored);
+      if (userData.email?.toLowerCase() === identityEmail) {
+        base = userData as UserProfile;
+      }
+    }
+
+    const fallbackName =
+      (fullName && fullName.trim()) ||
+      base?.displayName ||
+      `Driver${appleUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)}`;
+
+    const localId = base?.id ?? Date.now().toString();
+    const newUser: UserProfile = base
+      ? { ...base, displayName: base.displayName || fallbackName, authProvider: 'apple' }
+      : {
+          id: localId,
+          email: identityEmail,
+          displayName: fallbackName,
+          createdAt: Date.now(),
+          authProvider: 'apple',
+        };
+
+    try {
+      const result = await trpcClient.user.register.mutate({
+        id: localId,
+        email: identityEmail,
+        displayName: fallbackName,
+        authProvider: 'apple',
+      });
+      // If the account already existed, adopt the canonical backend id/profile
+      // so trips/posts created previously still map to this user.
+      if (result?.existing && result.user) {
+        newUser.id = result.user.id;
+        if (!newUser.displayName) newUser.displayName = result.user.displayName || fallbackName;
+        if (result.user.profilePicture && !newUser.profilePicture) newUser.profilePicture = result.user.profilePicture;
+        if (result.user.country && !newUser.country) newUser.country = result.user.country;
+        if (result.user.city && !newUser.city) newUser.city = result.user.city;
+      }
+      console.log('[PROFILE] Apple sign-in registered/resolved on backend');
+    } catch (error) {
+      console.error('Failed to register Apple user on backend:', error);
+    }
+
+    await saveUser(newUser);
+    return { success: true, user: newUser };
+  }, []);
+
   return useMemo(() => ({
     user,
     isAuthenticated: !!user,
@@ -568,6 +632,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     signIn,
     signOut,
     signInWithGoogle,
+    signInWithApple,
     updateProfile,
     updateCar,
     addCar,
@@ -580,5 +645,5 @@ export const [UserProvider, useUser] = createContextHook(() => {
     getCarDisplayName,
     syncImagesToBackend,
     updateSocialAccounts,
-  }), [user, isLoading, signUp, signIn, signOut, signInWithGoogle, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
+  }), [user, isLoading, signUp, signIn, signOut, signInWithGoogle, signInWithApple, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
 });

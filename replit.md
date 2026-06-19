@@ -100,6 +100,21 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   status / upgrade / manage / restore controls and is mounted on the profile screen.
   Native modules are lazily required and the whole feature short-circuits to a
   clean "unavailable" state on web.
+- **Sign in with Apple (iOS):** `expo-apple-authentication` (`ios.usesAppleSignIn:true`
+  + plugin in `app.json`). Button is the official `AppleAuthenticationButton`,
+  gated on `Platform.OS === 'ios'` + `isAvailableAsync()`, rendered next to the
+  Google button on `app/profile.tsx`. `UserProvider.signInWithApple(appleUserId,
+  email?, fullName?)` keys the account on a deterministic synthetic email
+  `apple_<credential.user>@privaterelay.appleid.com` (Apple only returns the real
+  email/name on the FIRST authorization, so the stable `credential.user` id is the
+  durable key). Backend `register` accepts `authProvider:'apple'` and, on an
+  existing Apple account with no password, returns `existing:true` + the canonical
+  stored user so the client adopts the real backend id (preserving trips/posts
+  ownership). Scoped to apple only — the Google/email "already exists" rejection is
+  unchanged. No server-side `identityToken` verification (consistent with the
+  app's client-asserted-userId trust model). Requires a native build to test
+  (not Expo Go / web).
+
 - **Pro social features (additive, never gate the free path):**
   - **Friends-only private leaderboards** — Pro users create boards and invite by
     username; free users can join if invited. Backend router

@@ -697,7 +697,7 @@ export const userRouter = createTRPCRouter({
       city: z.string().optional(),
       carBrand: z.string().optional(),
       carModel: z.string().optional(),
-      authProvider: z.enum(['email', 'google']).optional(),
+      authProvider: z.enum(['email', 'google', 'apple']).optional(),
     }))
     .mutation(async ({ input }) => {
       const normalizedEmail = input.email.trim().toLowerCase();
@@ -731,6 +731,32 @@ export const userRouter = createTRPCRouter({
             stored: true,
             upgraded: true,
             welcomeEmailSent: false,
+          };
+        }
+        // Apple re-authentication: there is no password to verify, and the
+        // account already exists, so treat this as a login. Return the existing
+        // account so the client adopts the canonical backend user id (and
+        // profile) instead of the throwaway local id it generated — otherwise
+        // the user's trips/posts would not map to them. Scoped to Apple only:
+        // the Apple identity email is an unguessable opaque id, whereas a real
+        // (Google) email is guessable, so we keep the "already exists" rejection
+        // for the email/Google paths to avoid leaking profile data by email.
+        if (!input.password && input.authProvider === 'apple') {
+          return {
+            success: true,
+            stored: true,
+            existing: true,
+            welcomeEmailSent: false,
+            user: {
+              id: existingEmail.id,
+              email: existingEmail.email,
+              displayName: existingEmail.displayName,
+              profilePicture: existingEmail.profilePicture ?? null,
+              country: existingEmail.country,
+              city: existingEmail.city,
+              carBrand: existingEmail.carBrand,
+              carModel: existingEmail.carModel,
+            },
           };
         }
         return {
