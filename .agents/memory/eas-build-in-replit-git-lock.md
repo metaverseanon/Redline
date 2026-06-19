@@ -60,3 +60,33 @@ can't be resubmitted because its Info.plist has the old version baked in.
 
 **Why:** App Store Connect closes a version train once that version is in
 review/approved; build numbers are only unique *within* a version.
+
+## Newly-added iOS capability ⇒ must DELETE+recreate the provisioning profile
+
+When you add a native capability (e.g. Sign in with Apple via `usesAppleSignIn`),
+the build fails at "Run fastlane" with "provisioning profile doesn't support the
+<capability>" / "doesn't include the <entitlement>". Enabling the capability on
+the App ID in the Apple Developer console is necessary but NOT sufficient.
+
+**Why the easy paths don't work:**
+- A non-interactive `eas build` (EXPO_TOKEN only, no Apple 2FA) CANNOT create or
+  regenerate a provisioning profile — it has no Apple Developer Portal write
+  access, so it silently reuses the cached/stale profile.
+- `eas credentials` → "All: Set up all the required credentials" does NOT
+  regenerate a profile it considers still valid/unexpired. It reports "Synced
+  capabilities: No updates" and keeps the OLD profile (tell-tale: the profile's
+  date is unchanged). So "All" alone never fixes a capability mismatch.
+
+**The only fix (requires the USER — needs Apple 2FA):** in an interactive shell,
+`npx eas-cli credentials -p ios` → pick the build profile (production) →
+"Build Credentials" → **"Provisioning Profile: Delete one from your project"**
+(confirm y) → then **"All: Set up all the required credentials"** → keep existing
+Distribution Certificate → "Generate a new Apple Provisioning Profile? y". The
+freshly generated profile inherits all currently-enabled App ID capabilities.
+
+**Reassurance for the user:** deleting a provisioning profile is safe/reversible
+— it's only a code-signing file, auto-recreated; it does NOT touch the app,
+users, data, App Store listing, existing TestFlight builds, or the cert.
+
+**The main agent CANNOT do this step** (no Apple auth in the sandbox); guide the
+user through the interactive `eas credentials` flow, then re-queue the build.
