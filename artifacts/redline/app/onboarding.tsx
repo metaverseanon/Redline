@@ -7,6 +7,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Platform,
+  KeyboardAvoidingView,
   TextInput,
   Modal,
   FlatList,
@@ -58,6 +59,8 @@ import {
   X,
   Hash,
   Trophy,
+  Mail,
+  Lock,
 } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 import { useUser } from '@/providers/UserProvider';
@@ -426,7 +429,7 @@ function PickerModal({
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signInWithApple, signInWithGoogle, updateProfile, updateCar, syncImagesToBackend } = useUser();
+  const { user, signInWithApple, signInWithGoogle, signUp, signIn, updateProfile, updateCar, syncImagesToBackend } = useUser();
   const { settings, setSpeedUnit, getSpeedLabel } = useSettings();
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -434,6 +437,12 @@ export default function OnboardingScreen() {
 
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+
+  const [showEmailAuth, setShowEmailAuth] = useState(false);
+  const [emailMode, setEmailMode] = useState<'signup' | 'signin'>('signup');
+  const [emailValue, setEmailValue] = useState('');
+  const [passwordValue, setPasswordValue] = useState('');
+  const [emailName, setEmailName] = useState('');
 
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
@@ -536,6 +545,49 @@ export default function OnboardingScreen() {
       setAuthBusy(false);
     }
   }, [authBusy, signInWithApple, onSignedIn]);
+
+  const handleEmailAuth = useCallback(async () => {
+    if (authBusy) return;
+    const email = emailValue.trim().toLowerCase();
+    const password = passwordValue;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Weak password', 'Your password must be at least 6 characters.');
+      return;
+    }
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+    setAuthBusy(true);
+    try {
+      if (emailMode === 'signup') {
+        const displayName = emailName.trim() || email.split('@')[0];
+        await signUp(email, displayName, password);
+      } else {
+        const result = await signIn(email, password);
+        if (!result.success) {
+          const msg =
+            result.error === 'incorrect_password'
+              ? 'Incorrect email or password.'
+              : result.message || 'Could not sign you in. Please try again.';
+          Alert.alert('Sign in failed', msg);
+          return;
+        }
+      }
+      setShowEmailAuth(false);
+      setPasswordValue('');
+      onSignedIn();
+    } catch (e: any) {
+      console.error('[ONBOARDING] Email auth error:', e);
+      Alert.alert(
+        emailMode === 'signup' ? 'Sign up failed' : 'Sign in failed',
+        e?.message || 'Something went wrong. Please try again.',
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [authBusy, emailMode, emailValue, passwordValue, emailName, signUp, signIn, onSignedIn]);
 
   useEffect(() => {
     if (step === 'name' && !username && user?.displayName) {
@@ -736,6 +788,19 @@ export default function OnboardingScreen() {
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </>
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.emailButton, authBusy && styles.btnDisabled]}
+          onPress={() => {
+            haptic(Haptics.ImpactFeedbackStyle.Light);
+            setEmailMode('signup');
+            setShowEmailAuth(true);
+          }}
+          disabled={authBusy}
+          activeOpacity={0.85}
+        >
+          <Mail size={20} color={TEXT} />
+          <Text style={styles.emailButtonText}>Continue with email</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity onPress={() => goTo(STEPS.indexOf('unit'))} style={styles.laterLink} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -1179,6 +1244,95 @@ export default function OnboardingScreen() {
           setShowModelPicker(false);
         }}
       />
+      <Modal visible={showEmailAuth} transparent animationType="slide" onRequestClose={() => setShowEmailAuth(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <TouchableOpacity style={styles.modalBackdropFill} activeOpacity={1} onPress={() => setShowEmailAuth(false)} />
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {emailMode === 'signup' ? 'Create account' : 'Sign in'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowEmailAuth(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <X size={22} color={TEXT_DIM} />
+              </TouchableOpacity>
+            </View>
+
+            {emailMode === 'signup' && (
+              <View style={styles.emailField}>
+                <Trophy size={18} color={TEXT_DIM} />
+                <TextInput
+                  style={styles.emailInput}
+                  placeholder="Display name (optional)"
+                  placeholderTextColor={TEXT_DIM}
+                  value={emailName}
+                  onChangeText={setEmailName}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                />
+              </View>
+            )}
+            <View style={styles.emailField}>
+              <Mail size={18} color={TEXT_DIM} />
+              <TextInput
+                style={styles.emailInput}
+                placeholder="Email"
+                placeholderTextColor={TEXT_DIM}
+                value={emailValue}
+                onChangeText={setEmailValue}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+            </View>
+            <View style={styles.emailField}>
+              <Lock size={18} color={TEXT_DIM} />
+              <TextInput
+                style={styles.emailInput}
+                placeholder="Password"
+                placeholderTextColor={TEXT_DIM}
+                value={passwordValue}
+                onChangeText={setPasswordValue}
+                secureTextEntry
+                autoCapitalize="none"
+                returnKeyType="done"
+                onSubmitEditing={handleEmailAuth}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.emailSubmit, authBusy && styles.btnDisabled]}
+              onPress={handleEmailAuth}
+              disabled={authBusy}
+              activeOpacity={0.85}
+            >
+              {authBusy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.emailSubmitText}>
+                  {emailMode === 'signup' ? 'Create account' : 'Sign in'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.emailSwitch}
+              onPress={() => setEmailMode((m) => (m === 'signup' ? 'signin' : 'signup'))}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.emailSwitchText}>
+                {emailMode === 'signup' ? 'Already have an account? ' : "Don't have an account? "}
+                <Text style={styles.emailSwitchLink}>
+                  {emailMode === 'signup' ? 'Sign in' : 'Create one'}
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1475,6 +1629,71 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: 16,
     color: '#000000',
+  },
+  emailButton: {
+    width: '100%',
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: CARD_LIGHT,
+    borderRadius: 14,
+  },
+  emailButtonText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 16,
+    color: TEXT,
+  },
+  emailField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: CARD_LIGHT,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  emailInput: {
+    flex: 1,
+    fontFamily: FONT_SEMI,
+    fontSize: 16,
+    color: TEXT,
+    paddingVertical: 15,
+  },
+  emailSubmit: {
+    width: '100%',
+    height: 54,
+    backgroundColor: RED,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  emailSubmitText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  emailSwitch: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  emailSwitchText: {
+    color: TEXT_DIM,
+    fontSize: 14,
+  },
+  emailSwitchLink: {
+    color: RED,
+    fontFamily: FONT_BOLD,
+  },
+  modalBackdropFill: {
+    flex: 1,
   },
   laterLink: {
     marginTop: 22,
