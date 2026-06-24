@@ -20,6 +20,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import { initializeMeta, metaIdentify } from "@/lib/meta";
+import { initializePostHog, posthogIdentify, posthogReset, PostHogAppProvider } from "@/lib/posthog";
 import { appsflyerSetCustomerUserId } from "@/lib/appsflyer";
 import * as Location from 'expo-location';
 import {
@@ -50,6 +51,12 @@ void initializeMeta()
   .catch((err) => {
     console.warn('[META] Initialization failed:', err?.message ?? err);
   });
+
+try {
+  initializePostHog();
+} catch (err: any) {
+  console.warn('[POSTHOG] Initialization failed:', err?.message ?? err);
+}
 
 if (Platform.OS !== 'web') {
   try {
@@ -252,6 +259,9 @@ function AnalyticsSync() {
       void tiktokIdentify(user.id, user.email);
       void metaIdentify(user.id, user.email);
       appsflyerSetCustomerUserId(user.id);
+      posthogIdentify(user.id, user.email);
+    } else {
+      posthogReset();
     }
   }, [user?.id, user?.email, identify, track]);
 
@@ -455,6 +465,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
+          <PostHogAppProvider>
           <SettingsProvider>
             <UserProvider>
               <RevenueCatUserSync>
@@ -483,6 +494,7 @@ export default function RootLayout() {
               </RevenueCatUserSync>
             </UserProvider>
           </SettingsProvider>
+          </PostHogAppProvider>
         </QueryClientProvider>
       </trpc.Provider>
     </ErrorBoundary>

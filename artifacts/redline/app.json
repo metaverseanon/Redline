@@ -129,7 +129,8 @@
           "isAutoInitEnabled": false
         }
       ],
-      "./plugins/with-tiktok-modular-headers.js"
+      "./plugins/with-tiktok-modular-headers.js",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true
