@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { trpcClient } from '@/lib/trpc';
+import { posthogCapture } from '@/lib/posthog';
 
 const ANON_ID_KEY = 'anonymous_id';
 const ANALYTICS_QUEUE_KEY = 'analytics_queue';
@@ -122,6 +123,7 @@ export const [AnalyticsProvider, useAnalytics] = createContextHook(() => {
     };
 
     queueRef.current.push(analyticsEvent);
+    posthogCapture(event, properties);
     console.log('[ANALYTICS] Track:', event, properties || '');
 
     if (queueRef.current.length >= 10) {

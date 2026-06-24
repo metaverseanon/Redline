@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
 import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
 import { appsflyerTrackSubscribe, appsflyerTrackPurchase } from "@/lib/appsflyer";
+import { posthogCapture } from "@/lib/posthog";
 import { trpc } from "@/lib/trpc";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
@@ -199,6 +201,18 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
   const purchaseMutation = useMutation({
     mutationFn: async (packageToPurchase: any) => {
       if (!enabled) throw new Error("Purchases unavailable on this platform");
+      try {
+        const tappedProduct = packageToPurchase?.product ?? {};
+        logPaywallEvent("subscribe_tapped", {
+          plan: String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown"),
+          productId: String(tappedProduct?.identifier ?? packageToPurchase?.identifier ?? "unknown"),
+          value: Number(tappedProduct?.price ?? 0),
+          currency: String(tappedProduct?.currencyCode ?? "USD"),
+          trial: !!tappedProduct?.introPrice,
+        });
+      } catch (err) {
+        console.warn("[RC] subscribe_tapped log failed:", err);
+      }
       const { customerInfo } = await PurchasesModule.purchasePackage(packageToPurchase);
       try {
         const product = packageToPurchase?.product ?? {};
@@ -225,6 +239,14 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         void appsflyerTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
         void appsflyerTrackPurchase({ value: safeValue, currency, productId, orderId });
         logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
+        logPaywallEvent("subscribe", {
+          plan: String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown"),
+          value: safeValue,
+          currency,
+          productId,
+          trial: !!product?.introPrice,
+          orderId,
+        });
       } catch (err) {
         console.warn("[RC] post-purchase ad tracking failed:", err);
       }
@@ -294,6 +316,7 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
       }
 
       logPaywallEvent("paywall_presented", { source });
+      logPaywallEvent("paywall_viewed", { source });
       return new Promise<PaywallResult>((resolve) => {
         const previous = paywallResolveRef.current;
         paywallResolveRef.current = resolve;
@@ -426,6 +449,48 @@ export function SubscriptionProvider({
       { onError: (err) => console.warn("[RC] syncStatus failed:", err.message) },
     );
   }, [userId, userEmail, value.isAvailable, value.customerInfo, syncStatusMutation]);
+
+  // Detect subscription cancellation (auto-renew turned off in the App Store).
+  // RevenueCat surfaces this as `unsubscribeDetectedAt` on the entitlement; the
+  // entitlement stays active until expiration, so we fire once per detected
+  // cancellation timestamp (deduped) rather than on every customerInfo refresh.
+  const cancelLoggedRef = useRef<string>("");
+  useEffect(() => {
+    if (!value.isAvailable) return;
+    const active = value.customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+    const unsub: string | null = active?.unsubscribeDetectedAt ?? null;
+    if (!active || !unsub) return;
+    const memKey = `${userId ?? "anon"}|${unsub}`;
+    if (cancelLoggedRef.current === memKey) return;
+    // Persist the dedupe key per-user so the same cancellation isn't re-logged on
+    // every cold start while the entitlement is still active (it stays "active"
+    // until expiration even after auto-renew is turned off).
+    const storageKey = `subscription_cancel_logged:${userId ?? "anon"}`;
+    let aborted = false;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(storageKey);
+        if (aborted) return;
+        if (stored === unsub) {
+          cancelLoggedRef.current = memKey;
+          return;
+        }
+        cancelLoggedRef.current = memKey;
+        await AsyncStorage.setItem(storageKey, unsub);
+        posthogCapture("subscription_cancelled", {
+          plan: active.productIdentifier ?? null,
+          productId: active.productIdentifier ?? null,
+          expirationDate: active.expirationDate ?? null,
+          willRenew: active.willRenew ?? false,
+        });
+      } catch (err) {
+        console.warn("[RC] subscription_cancelled log failed:", err);
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, [value.isAvailable, value.customerInfo, userId]);
 
   return (
     <Context.Provider value={value}>

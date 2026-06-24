@@ -192,6 +192,43 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   `query.isError`; the original empty state still appears when the API
   successfully returns `[]`.
 
+### Funnel analytics events (PostHog)
+
+Five standard funnel events are instrumented for PostHog (the funnel/conversion
+tooling). PostHog is the guaranteed sink for all five; the in-paywall events also
+flow to the custom backend analytics store.
+
+- **Dual-sink wiring:** the custom `useAnalytics().track()`
+  (`providers/AnalyticsProvider.tsx`) now ALSO calls `posthogCapture(event, props)`,
+  so every event routed through `track()` — including the existing `paywall_*`
+  events fired via the `logPaywallEvent` → `PaywallAnalyticsBridge` path — lands in
+  PostHog too. Provider-level events that sit ABOVE `AnalyticsProvider` in the tree
+  (`UserProvider`, `SubscriptionProvider`) can't use the `track` hook, so they call
+  the plain `posthogCapture()` function directly.
+- `account_created` — `providers/UserProvider.tsx`, fired on a genuinely NEW
+  account only. The backend `register` returns `{ success:false }` (NOT a throw)
+  for an already-existing email/Google account, and `{ upgraded:true }` when an
+  existing Google-only account just adds a password — so both paths gate on
+  `result.success === true && !result.upgraded`. Apple fires only when
+  `!result.existing`. Prop: `method` (`email`|`google`|`apple`).
+- `paywall_viewed` — `lib/revenuecat.tsx` `presentPaywall`, alongside the existing
+  `paywall_presented`. Prop: `source`.
+- `subscribe_tapped` — `lib/revenuecat.tsx` `purchaseMutation.mutationFn`, fired at
+  the start (every purchase attempt, the custom `CustomPaywallModal` purchase
+  button). Props: `plan`, `productId`, `value`, `currency`, `trial`.
+- `subscribe` — same mutation, success block, next to
+  `paywall_purchase_succeeded` (kept). Props: `plan`, `value`, `currency`,
+  `productId`, `trial`, `orderId`.
+- `subscription_cancelled` — `SubscriptionProvider` effect watching the Pro
+  entitlement's `unsubscribeDetectedAt` (auto-renew turned off; entitlement stays
+  active until expiry). Deduped via **AsyncStorage** (`subscription_cancel_logged:
+  <userId>` = the `unsubscribeDetectedAt` value) so it fires once per cancellation
+  even across cold starts. Props: `plan`/`productId`, `expirationDate`,
+  `willRenew`.
+- All capture paths are no-ops on web / when `EXPO_PUBLIC_POSTHOG_API_KEY` is
+  absent, and wrapped so analytics never breaks the purchase/auth flow. Requires a
+  native build (or Expo Go with the key) to emit real events.
+
 ### pnpm + Expo monorepo gotchas (already configured)
 
 - Root `.npmrc` sets `shamefully-hoist=true` because Metro doesn't traverse

@@ -7,6 +7,7 @@ import { UserProfile, UserCar } from '@/types/user';
 import { trpcClient } from '@/lib/trpc';
 import { COUNTRIES } from '@/constants/countries';
 import { uploadProfilePicture, uploadCarPicture } from '@/lib/imageUpload';
+import { posthogCapture } from '@/lib/posthog';
 
 const USER_KEY = 'user_profile';
 
@@ -252,6 +253,11 @@ export const [UserProvider, useUser] = createContextHook(() => {
         throw new Error(errorMsg);
       }
       console.log('User registered on backend successfully');
+      // Only a genuinely new account counts as account_created. `upgraded` means
+      // an existing (Google-only) account just added a password — not a new user.
+      if (!(result as { upgraded?: boolean }).upgraded) {
+        posthogCapture('account_created', { method: 'email', hasCar: cars.length > 0 });
+      }
     } catch (error: any) {
       console.error('Failed to register user on backend:', error);
       // Extract the most useful error message
@@ -593,12 +599,18 @@ export const [UserProvider, useUser] = createContextHook(() => {
     await saveUser(newUser);
 
     try {
-      await trpcClient.user.register.mutate({
+      const result = await trpcClient.user.register.mutate({
         id: userId,
         email: normalizedGoogleEmail,
         displayName,
       });
       console.log('Google user registered');
+      // Backend returns { success:false } (not a throw) for an already-existing
+      // email/Google account, so gate on success to avoid counting returning
+      // sign-ins as new accounts.
+      if (result?.success === true && !(result as { upgraded?: boolean }).upgraded) {
+        posthogCapture('account_created', { method: 'google' });
+      }
     } catch (error) {
       console.error('Failed to register Google user on backend:', error);
     }
@@ -667,6 +679,8 @@ export const [UserProvider, useUser] = createContextHook(() => {
         if (result.user.profilePicture && !newUser.profilePicture) newUser.profilePicture = result.user.profilePicture;
         if (result.user.country && !newUser.country) newUser.country = result.user.country;
         if (result.user.city && !newUser.city) newUser.city = result.user.city;
+      } else {
+        posthogCapture('account_created', { method: 'apple' });
       }
       console.log('[PROFILE] Apple sign-in registered/resolved on backend');
     } catch (error) {
