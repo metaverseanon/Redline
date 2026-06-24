@@ -233,6 +233,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     }
     const userId = Date.now().toString();
 
+    let isNewAccount = true;
     try {
       console.log('Attempting to register user:', { email, displayName, country, city, carBrand, carModel });
       const result = await trpcClient.user.register.mutate({
@@ -255,7 +256,8 @@ export const [UserProvider, useUser] = createContextHook(() => {
       console.log('User registered on backend successfully');
       // Only a genuinely new account counts as account_created. `upgraded` means
       // an existing (Google-only) account just added a password — not a new user.
-      if (!(result as { upgraded?: boolean }).upgraded) {
+      isNewAccount = !(result as { upgraded?: boolean }).upgraded;
+      if (isNewAccount) {
         posthogCapture('account_created', { method: 'email', hasCar: cars.length > 0 });
       }
     } catch (error: any) {
@@ -289,7 +291,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     };
     await saveUser(newUser);
 
-    return newUser;
+    return { user: newUser, isNewAccount };
   }, []);
 
   const createLocalUser = useCallback(async (data: {
@@ -582,7 +584,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
         }
         userRef.current = userData;
         setUser(userData);
-        return { success: true, user: userData };
+        return { success: true, user: userData, existing: true };
       }
     }
     
@@ -598,6 +600,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     };
     await saveUser(newUser);
 
+    let existing = false;
     try {
       const result = await trpcClient.user.register.mutate({
         id: userId,
@@ -608,14 +611,16 @@ export const [UserProvider, useUser] = createContextHook(() => {
       // Backend returns { success:false } (not a throw) for an already-existing
       // email/Google account, so gate on success to avoid counting returning
       // sign-ins as new accounts.
-      if (result?.success === true && !(result as { upgraded?: boolean }).upgraded) {
+      const isNewAccount = result?.success === true && !(result as { upgraded?: boolean }).upgraded;
+      existing = !isNewAccount;
+      if (isNewAccount) {
         posthogCapture('account_created', { method: 'google' });
       }
     } catch (error) {
       console.error('Failed to register Google user on backend:', error);
     }
 
-    return { success: true, user: newUser };
+    return { success: true, user: newUser, existing };
   }, []);
 
   const signInWithApple = useCallback(async (
@@ -664,6 +669,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
           appleEmail: capturedAppleEmail,
         };
 
+    let existing = false;
     try {
       const result = await trpcClient.user.register.mutate({
         id: localId,
@@ -674,6 +680,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
       // If the account already existed, adopt the canonical backend id/profile
       // so trips/posts created previously still map to this user.
       if (result?.existing && result.user) {
+        existing = true;
         newUser.id = result.user.id;
         if (!newUser.displayName) newUser.displayName = result.user.displayName || fallbackName;
         if (result.user.profilePicture && !newUser.profilePicture) newUser.profilePicture = result.user.profilePicture;
@@ -688,7 +695,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     }
 
     await saveUser(newUser);
-    return { success: true, user: newUser };
+    return { success: true, user: newUser, existing };
   }, []);
 
   return useMemo(() => ({

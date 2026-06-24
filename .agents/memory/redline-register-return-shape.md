@@ -25,3 +25,29 @@ users only.
 **How to apply:** gate "new account" side-effects on
 `result.success === true && !result.upgraded` for email/Google, and `!result.existing`
 for apple. Never assume an existing account causes a thrown error.
+
+## Onboarding gating decision (client)
+
+Onboarding setup steps (unit / ride / photo / name / safety / paywall) run for
+GENUINELY NEW accounts only. Any existing account — email sign-in, sign-up that
+resolves to an existing/upgraded account, or Google/Apple that the backend says
+already exists — skips straight to the app and never re-does car/profile setup.
+
+- `UserProvider` surfaces the signal: `signUp` returns `{ user, isNewAccount }`
+  (`isNewAccount=false` on `upgraded`); `signInWithGoogle`/`signInWithApple`
+  return an extra `existing` flag; `signIn` is always existing (login).
+- Onboarding's `finishForExistingUser()` sets `onboarding_completed=true` and
+  `router.replace('/(tabs)/track')` WITHOUT firing CompleteTutorial (a new-user
+  funnel event must not fire for returning users).
+- Email sign-up that hits "already exists" (has a password) falls back to
+  `signIn` with the same creds; the `upgraded` (Google→password) path also calls
+  `signIn` afterward to adopt the canonical backend id so trips/posts still map.
+
+**Why:** returning users re-running onboarding made no sense and risked detaching
+them from their account; only fresh installs of brand-new accounts should see it.
+
+**Caveat:** a returning Google user on a fresh install still gets a throwaway
+local id (the Google register path deliberately does NOT return the canonical
+profile — see the security note above), so onboarding-skip works but Google id
+continuity remains a known, intentional limitation. Apple + email adopt the
+canonical id; Google does not.

@@ -517,6 +517,24 @@ export default function OnboardingScreen() {
     setStepIndex(STEPS.indexOf('signedin'));
   }, []);
 
+  // Existing accounts (sign-in, or a sign-up that resolves to an account that
+  // already exists) skip the rest of onboarding entirely — the car/profile was
+  // set up previously. Only brand-new accounts continue the setup flow.
+  const finishForExistingUser = useCallback(async () => {
+    hapticSuccess();
+    try {
+      await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    } catch (e) {
+      console.warn('[ONBOARDING] Failed to save completion:', e);
+    }
+    try {
+      void syncImagesToBackend();
+    } catch (e) {
+      console.warn('[ONBOARDING] image sync failed:', e);
+    }
+    router.replace('/(tabs)/track' as any);
+  }, [syncImagesToBackend, router]);
+
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     void AppleAuthentication.isAvailableAsync()
@@ -533,8 +551,12 @@ export default function OnboardingScreen() {
         });
         const gUser = await res.json();
         if (gUser.email) {
-          await signInWithGoogle(gUser.email, gUser.name || gUser.email.split('@')[0], gUser.picture);
-          onSignedIn();
+          const result = await signInWithGoogle(gUser.email, gUser.name || gUser.email.split('@')[0], gUser.picture);
+          if (result.existing) {
+            await finishForExistingUser();
+          } else {
+            onSignedIn();
+          }
         } else {
           Alert.alert('Sign in failed', 'Could not retrieve your Google email. Please try again.');
         }
@@ -545,7 +567,7 @@ export default function OnboardingScreen() {
         setAuthBusy(false);
       }
     },
-    [signInWithGoogle, onSignedIn],
+    [signInWithGoogle, onSignedIn, finishForExistingUser],
   );
 
   useEffect(() => {
@@ -578,8 +600,12 @@ export default function OnboardingScreen() {
       const fullName = credential.fullName
         ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ').trim()
         : null;
-      await signInWithApple(credential.user, credential.email, fullName || null);
-      onSignedIn();
+      const result = await signInWithApple(credential.user, credential.email, fullName || null);
+      if (result.existing) {
+        await finishForExistingUser();
+      } else {
+        onSignedIn();
+      }
     } catch (e: any) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return;
       console.error('[ONBOARDING] Apple sign-in error:', e);
@@ -587,7 +613,7 @@ export default function OnboardingScreen() {
     } finally {
       setAuthBusy(false);
     }
-  }, [authBusy, signInWithApple, onSignedIn]);
+  }, [authBusy, signInWithApple, onSignedIn, finishForExistingUser]);
 
   const handleEmailAuth = useCallback(async () => {
     if (authBusy) return;
@@ -606,21 +632,58 @@ export default function OnboardingScreen() {
     try {
       if (emailMode === 'signup') {
         const displayName = emailName.trim() || email.split('@')[0];
-        await signUp(email, displayName, password);
-      } else {
-        const result = await signIn(email, password);
-        if (!result.success) {
-          const msg =
-            result.error === 'incorrect_password'
-              ? 'Incorrect email or password.'
-              : result.message || 'Could not sign you in. Please try again.';
-          Alert.alert('Sign in failed', msg);
-          return;
+        let isNewAccount: boolean;
+        try {
+          const res = await signUp(email, displayName, password);
+          isNewAccount = res.isNewAccount;
+        } catch (signUpErr: any) {
+          // The backend rejects sign-up when an account already exists. The user
+          // clearly has an account, so try to sign them in with the same
+          // credentials and skip onboarding rather than dead-ending on an error.
+          if (/already exists/i.test(String(signUpErr?.message || ''))) {
+            const signInResult = await signIn(email, password);
+            if (signInResult.success) {
+              setShowEmailAuth(false);
+              setPasswordValue('');
+              await finishForExistingUser();
+              return;
+            }
+            Alert.alert(
+              'Account already exists',
+              'An account with this email already exists. Check your password, or use "Sign in".',
+            );
+            return;
+          }
+          throw signUpErr;
         }
+        setShowEmailAuth(false);
+        setPasswordValue('');
+        if (isNewAccount) {
+          onSignedIn();
+        } else {
+          // Existing account just added a password (Google-only account upgrade).
+          // Sign in with the same credentials to adopt the canonical backend
+          // identity so the returning user keeps their trips/posts, then skip
+          // the rest of onboarding.
+          await signIn(email, password).catch(() => {});
+          await finishForExistingUser();
+        }
+        return;
+      }
+
+      const result = await signIn(email, password);
+      if (!result.success) {
+        const msg =
+          result.error === 'incorrect_password'
+            ? 'Incorrect email or password.'
+            : result.message || 'Could not sign you in. Please try again.';
+        Alert.alert('Sign in failed', msg);
+        return;
       }
       setShowEmailAuth(false);
       setPasswordValue('');
-      onSignedIn();
+      // Signing in always means an existing account — go straight to the app.
+      await finishForExistingUser();
     } catch (e: any) {
       console.error('[ONBOARDING] Email auth error:', e);
       Alert.alert(
@@ -630,7 +693,7 @@ export default function OnboardingScreen() {
     } finally {
       setAuthBusy(false);
     }
-  }, [authBusy, emailMode, emailValue, passwordValue, emailName, signUp, signIn, onSignedIn]);
+  }, [authBusy, emailMode, emailValue, passwordValue, emailName, signUp, signIn, onSignedIn, finishForExistingUser]);
 
   useEffect(() => {
     if (step === 'name' && !username && user?.displayName) {
