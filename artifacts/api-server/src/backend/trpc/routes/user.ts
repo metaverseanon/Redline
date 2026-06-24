@@ -579,6 +579,27 @@ async function checkDisplayNameExists(displayName: string): Promise<boolean> {
   }
 }
 
+async function getUserIdByDisplayName(displayName: string): Promise<string | null> {
+  if (!isDbConfigured()) {
+    return null;
+  }
+
+  try {
+    const url = `${getSupabaseRestUrl("users")}?display_name=ilike.${encodeURIComponent(displayName)}&select=id&limit=1`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getSupabaseHeaders(),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && data.length > 0 ? String(data[0].id) : null;
+  } catch (error) {
+    console.error("Error looking up display name:", error);
+    return null;
+  }
+}
+
 function generateResetCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -808,6 +829,26 @@ export const userRouter = createTRPCRouter({
         stored: true,
         welcomeEmailSent: emailSent,
       };
+    }),
+
+  checkUsername: publicProcedure
+    .input(z.object({
+      displayName: z.string(),
+      excludeUserId: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const name = input.displayName.trim();
+      if (name.length < 2) {
+        return { available: false, reason: "too_short" as const };
+      }
+      const ownerId = await getUserIdByDisplayName(name);
+      if (!ownerId) {
+        return { available: true as const };
+      }
+      if (input.excludeUserId && ownerId === input.excludeUserId) {
+        return { available: true as const };
+      }
+      return { available: false, reason: "taken" as const };
     }),
 
   login: publicProcedure

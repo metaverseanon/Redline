@@ -64,6 +64,7 @@ import {
 } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 import { useUser } from '@/providers/UserProvider';
+import { trpcClient } from '@/lib/trpc';
 import { useSettings, SpeedUnit } from '@/providers/SettingsProvider';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 
@@ -429,7 +430,7 @@ function PickerModal({
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signInWithApple, signInWithGoogle, signUp, signIn, updateProfile, updateCar, syncImagesToBackend } = useUser();
+  const { user, signInWithApple, signInWithGoogle, signUp, signIn, createLocalUser, updateProfile, updateCar, syncImagesToBackend } = useUser();
   const { settings, setSpeedUnit, getSpeedLabel } = useSettings();
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -450,6 +451,9 @@ export default function OnboardingScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [carPhoto, setCarPhoto] = useState('');
   const [username, setUsername] = useState('');
+  const [checkingName, setCheckingName] = useState(false);
+  const [nameError, setNameError] = useState('');
+  const ratingRequestedRef = useRef(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [ackSafety, setAckSafety] = useState(false);
   const [ackTerms, setAckTerms] = useState(false);
@@ -657,18 +661,74 @@ export default function OnboardingScreen() {
     goNext();
   }, [persistCar, goNext]);
 
+  const requestAppRating = useCallback(async () => {
+    if (ratingRequestedRef.current) return;
+    ratingRequestedRef.current = true;
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === 'web') return;
+    try {
+      const StoreReview = await import('expo-store-review');
+      const available = await StoreReview.isAvailableAsync();
+      if (available) {
+        await StoreReview.requestReview();
+      }
+    } catch (e) {
+      console.warn('[ONBOARDING] store review request failed:', e);
+    }
+  }, []);
+
   const handleNameContinue = useCallback(async () => {
     const name = username.trim();
     if (!name) return;
-    if (user) {
+    if (checkingName) return;
+
+    // Skip the availability check if the user kept their existing name.
+    const isOwnName = !!user?.displayName && user.displayName.trim().toLowerCase() === name.toLowerCase();
+    if (!isOwnName) {
+      setCheckingName(true);
+      setNameError('');
       try {
-        await updateProfile({ displayName: name });
+        const res = await trpcClient.user.checkUsername.query({
+          displayName: name,
+          excludeUserId: user?.id,
+        });
+        if (!res.available) {
+          setNameError(
+            res.reason === 'too_short'
+              ? 'That name is too short. Use at least 2 characters.'
+              : 'That username is already taken. Try another.',
+          );
+          setCheckingName(false);
+          return;
+        }
       } catch (e) {
-        console.warn('[ONBOARDING] update name failed:', e);
+        // Network/backend error: block and let the user retry so a taken
+        // username can never slip through on a failed check.
+        console.warn('[ONBOARDING] username check failed:', e);
+        setNameError("Couldn't check that username. Check your connection and try again.");
+        setCheckingName(false);
+        return;
       }
+      setCheckingName(false);
+    }
+
+    try {
+      if (user) {
+        await updateProfile({ displayName: name });
+        await persistCar();
+      } else {
+        await createLocalUser({
+          displayName: name,
+          carBrand: brand || undefined,
+          carModel: model || undefined,
+          carPicture: carPhoto || undefined,
+        });
+      }
+    } catch (e) {
+      console.warn('[ONBOARDING] save profile failed:', e);
     }
     goNext();
-  }, [username, user, updateProfile, goNext]);
+  }, [username, checkingName, user, updateProfile, persistCar, createLocalUser, brand, model, carPhoto, goNext]);
 
   const completeOnboarding = useCallback(async () => {
     try {
@@ -932,7 +992,7 @@ export default function OnboardingScreen() {
 
   const renderRating = () => (
     <Animated.View key="rating" entering={enterFade()} style={styles.centerContent}>
-      <StarRating onRate={() => {}} />
+      <StarRating onRate={() => void requestAppRating()} />
       <Text style={[styles.heroTitle, { marginTop: 36 }]}>Support our journey</Text>
       <Text style={styles.heroSub}>We&apos;re a small team building for drivers. A quick rating helps more drivers find RedLine.</Text>
       <View style={styles.benefitList}>
@@ -966,7 +1026,10 @@ export default function OnboardingScreen() {
           placeholder="username"
           placeholderTextColor="#B0B0B5"
           value={username}
-          onChangeText={setUsername}
+          onChangeText={(t) => {
+            setUsername(t);
+            if (nameError) setNameError('');
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           maxLength={24}
@@ -974,6 +1037,14 @@ export default function OnboardingScreen() {
           onSubmitEditing={handleNameContinue}
         />
       </View>
+      {checkingName ? (
+        <View style={styles.nameStatusRow}>
+          <ActivityIndicator size="small" color={RED} />
+          <Text style={styles.nameStatusText}>Checking availability…</Text>
+        </View>
+      ) : nameError ? (
+        <Text style={styles.nameErrorText}>{nameError}</Text>
+      ) : null}
     </Animated.View>
   );
 
@@ -1162,8 +1233,14 @@ export default function OnboardingScreen() {
         onPress = carPhoto ? handlePhotoContinue : pickPhoto;
         secondary = { label: 'Skip', onPress: handlePhotoContinue };
         break;
+      case 'rating':
+        onPress = () => {
+          void requestAppRating();
+          goNext();
+        };
+        break;
       case 'name':
-        disabled = !username.trim();
+        disabled = !username.trim() || checkingName;
         onPress = handleNameContinue;
         break;
       case 'safety':
@@ -1943,6 +2020,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#000000',
     paddingVertical: 18,
+  },
+  nameStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 14,
+  },
+  nameStatusText: {
+    fontFamily: FONT_SEMI,
+    fontSize: 13,
+    color: '#B0B0B5',
+  },
+  nameErrorText: {
+    fontFamily: FONT_SEMI,
+    fontSize: 13,
+    color: RED,
+    marginTop: 14,
   },
 
   // Location

@@ -286,6 +286,50 @@ export const [UserProvider, useUser] = createContextHook(() => {
     return newUser;
   }, []);
 
+  const createLocalUser = useCallback(async (data: {
+    displayName: string;
+    carBrand?: string;
+    carModel?: string;
+    carPicture?: string;
+    profilePicture?: string;
+  }) => {
+    const existing = userRef.current;
+    if (existing) {
+      const updated: UserProfile = {
+        ...existing,
+        displayName: data.displayName,
+        carBrand: data.carBrand ?? existing.carBrand,
+        carModel: data.carModel ?? existing.carModel,
+        carPicture: data.carPicture ?? existing.carPicture,
+      };
+      await saveUser(updated);
+      return updated;
+    }
+    const cars: UserCar[] = [];
+    if (data.carBrand && data.carModel) {
+      cars.push({
+        id: Date.now().toString(),
+        brand: data.carBrand,
+        model: data.carModel,
+        picture: data.carPicture,
+        isPrimary: true,
+      });
+    }
+    const newUser: UserProfile = {
+      id: Date.now().toString(),
+      email: '',
+      displayName: data.displayName,
+      profilePicture: data.profilePicture,
+      carBrand: data.carBrand,
+      carModel: data.carModel,
+      carPicture: data.carPicture,
+      cars: cars.length > 0 ? cars : undefined,
+      createdAt: Date.now(),
+    };
+    await saveUser(newUser);
+    return newUser;
+  }, []);
+
   const signIn = useCallback(async (email: string, password: string) => {
     try {
       const result = await trpcClient.user.login.mutate({ email, password });
@@ -637,6 +681,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     isLoading,
     signUp,
     signIn,
+    createLocalUser,
     signOut,
     signInWithGoogle,
     signInWithApple,
@@ -652,5 +697,5 @@ export const [UserProvider, useUser] = createContextHook(() => {
     getCarDisplayName,
     syncImagesToBackend,
     updateSocialAccounts,
-  }), [user, isLoading, signUp, signIn, signOut, signInWithGoogle, signInWithApple, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
+  }), [user, isLoading, signUp, signIn, createLocalUser, signOut, signInWithGoogle, signInWithApple, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
 });
