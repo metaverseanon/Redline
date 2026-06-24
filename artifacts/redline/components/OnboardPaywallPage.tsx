@@ -29,7 +29,7 @@ const PRO_HIGHLIGHTS = [
   { icon: Bell, text: 'Friends boards leave alerts' },
   { icon: Share2, text: 'iOS share-sheet board invites' },
   { icon: Flag, text: 'Custom challenges with countdown' },
-  { icon: Trophy, text: 'Rank-up confetti celebrations' },
+  { icon: Trophy, text: 'Challenges with real cash rewards' },
   { icon: Music, text: 'Drive soundtracks on recaps & posts' },
 ];
 
@@ -186,7 +186,7 @@ export default function OnboardPaywallPage({
         <Text style={styles.title}>Unlock</Text>
         <Text style={styles.highlight}>Everything</Text>
         <Text style={styles.subtitle}>
-          Friends boards, custom challenges, share invites, rank-up celebrations and more.
+          Friends boards, share invites, challenges with cash rewards and more.
         </Text>
 
         <View style={styles.featureList}>

@@ -704,14 +704,28 @@ export default function OnboardingScreen() {
     ratingRequestedRef.current = true;
     haptic(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.OS === 'web') return;
+    // Apple's in-app StoreReview prompt is silently suppressed in TestFlight /
+    // dev builds and is rate-limited in production, so it never reliably appears
+    // from an explicit "rate us" tap. Open the App Store review page directly —
+    // the standard, Apple-compliant pattern for a user-initiated rating action.
+    const reviewUrl =
+      Platform.OS === 'ios'
+        ? 'itms-apps://apps.apple.com/app/id6758342404?action=write-review'
+        : 'market://details?id=app.rork.redline-app';
     try {
-      const StoreReview = await import('expo-store-review');
-      const available = await StoreReview.isAvailableAsync();
-      if (available) {
-        await StoreReview.requestReview();
-      }
+      await Linking.openURL(reviewUrl);
     } catch (e) {
-      console.warn('[ONBOARDING] store review request failed:', e);
+      console.warn('[ONBOARDING] open store review url failed:', e);
+      try {
+        const StoreReview = await import('expo-store-review');
+        if ((await StoreReview.isAvailableAsync()) && (await StoreReview.hasAction())) {
+          await StoreReview.requestReview();
+        }
+      } catch (err) {
+        console.warn('[ONBOARDING] store review fallback failed:', err);
+        // Both paths failed — allow the user to try again this session.
+        ratingRequestedRef.current = false;
+      }
     }
   }, []);
 
@@ -1279,10 +1293,7 @@ export default function OnboardingScreen() {
         secondary = { label: 'Skip', onPress: handlePhotoContinue };
         break;
       case 'rating':
-        onPress = () => {
-          void requestAppRating();
-          goNext();
-        };
+        onPress = goNext;
         break;
       case 'name':
         disabled = !username.trim() || checkingName;
