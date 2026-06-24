@@ -41,3 +41,18 @@ both functions together.
 `Prefer: return=representation`; empty result = lost the race → bail. This makes
 concurrent ticks across multiple autoscale instances safe (exactly-once reward
 grants). See also `supabase-rest-once-only-mutex.md`.
+
+`maybeActivate` (pending→active) uses the same mutex: conditional PATCH
+`status=eq.pending`, and only the instance that gets the non-empty representation
+row broadcasts the "challenge is live" push to all users.
+
+## Activation-broadcast delivery is at-most-once (deliberate, no outbox)
+The "round is live" broadcast is **awaited inside the winning request** (not
+fire-and-forget) so the send completes before returning, then errors are
+swallowed so a push failure never breaks `getActiveChallenge`.
+**Why:** a durable outbox / `live_notified_at` retry column was considered and
+rejected — it needs Supabase DDL the user must run, and this is a one-time
+marketing ping per round, not transactional. Awaiting in the mutex winner is
+strictly better than fire-and-forget without that cost.
+**How to apply:** if delivery ever MUST be guaranteed (not just best-effort),
+that's when to add the outbox column + retry — don't bolt it on otherwise.

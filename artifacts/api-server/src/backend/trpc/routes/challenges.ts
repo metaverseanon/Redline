@@ -4,6 +4,7 @@ import { createTRPCRouter, publicProcedure } from "../create-context";
 import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl } from "../db";
 import { cachedOrFetch } from "../cache";
 import { getActiveProCount, isUserPro } from "./subscription";
+import { broadcastPushToAllUsers } from "./notifications";
 
 /**
  * Pro-only, points-based challenges (2-week rounds).
@@ -155,21 +156,65 @@ async function getUserBriefs(ids: string[]): Promise<Map<string, UserBriefRow>> 
   return map;
 }
 
+/**
+ * Broadcast a "challenge is live" push to ALL users the moment a round
+ * activates. Called only by the instance that wins the activation mutex, so the
+ * notification is sent exactly once across autoscale instances / ticker / cron.
+ */
+async function notifyChallengeLive(challenge: ChallengeRow): Promise<void> {
+  const isFirst = (challenge.round_number ?? 1) <= 1;
+  const title = isFirst
+    ? "🏁 The first RedLine Challenge is LIVE!"
+    : "🏁 A new RedLine Challenge is LIVE!";
+  const body = isFirst
+    ? "The community hit the milestone — the very first challenge has begun. Open RedLine, join the round, and start earning points!"
+    : "A new challenge round just dropped. Open RedLine, join, and climb the leaderboard!";
+  const result = await broadcastPushToAllUsers({
+    title,
+    body,
+    data: { type: "challenge_live", challengeId: challenge.id },
+    channelId: "default",
+  });
+  console.log(
+    `[CHALLENGES] live broadcast: ${result.sent} sent, ${result.failed} failed, ${result.totalUsers} users`,
+  );
+}
+
 /** Activate a pending round once the Pro threshold is reached. */
 async function maybeActivate(challenge: ChallengeRow, proCount: number): Promise<ChallengeRow> {
   if (challenge.status !== "pending") return challenge;
   if (proCount < challenge.required_pro_count) return challenge;
   const now = Date.now();
   const update = { status: "active", start_time: now, end_time: now + TWO_WEEKS_MS };
+  // Conditional PATCH on status=eq.pending is a mutex: across concurrent
+  // autoscale instances / the ticker / cron, only ONE caller flips pending→active
+  // and gets a non-empty representation back (getSupabaseHeaders already sends
+  // Prefer: return=representation). The winner — and only the winner —
+  // broadcasts the "challenge is live" push, so users are notified exactly once.
   const resp = await fetch(
-    `${getSupabaseRestUrl(TABLE_CHALLENGES)}?id=eq.${encodeURIComponent(challenge.id)}`,
+    `${getSupabaseRestUrl(TABLE_CHALLENGES)}?id=eq.${encodeURIComponent(challenge.id)}&status=eq.pending`,
     { method: "PATCH", headers: getSupabaseHeaders(), body: JSON.stringify(update) },
   );
   if (!resp.ok) {
     console.error("[CHALLENGES] activation failed", resp.status);
     return challenge;
   }
+  const rows = (await resp.json().catch(() => [])) as ChallengeRow[];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    // Lost the activation race to another instance; it owns the broadcast.
+    console.log("[CHALLENGES] activation race lost (already active)", challenge.id);
+    return { ...challenge, ...update, status: "active" };
+  }
   console.log("[CHALLENGES] Round activated", challenge.id);
+  // Await the broadcast inside the winning request so the send completes before
+  // we return (more reliable than fire-and-forget), but swallow errors so a push
+  // failure never breaks getActiveChallenge. Activation is a one-time event per
+  // round, so the extra latency on this single request is an acceptable tradeoff.
+  try {
+    await notifyChallengeLive(challenge);
+  } catch (e) {
+    console.error("[CHALLENGES] live broadcast failed", e);
+  }
   return { ...challenge, ...update, status: "active" };
 }
 

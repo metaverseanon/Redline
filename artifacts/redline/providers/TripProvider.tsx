@@ -11,9 +11,11 @@ import {
   isSpeedCameraRestricted,
   setCachedCameras,
   haversineDistance,
+  isCameraAhead,
   SPEED_CAMERA_WARNING_RADIUS_KM,
   SPEED_CAMERA_FETCH_RADIUS_KM,
   SPEED_CAMERA_REFETCH_THRESHOLD_KM,
+  SPEED_CAMERA_MIN_WARN_SPEED_KMH,
 } from '@/constants/speedCameras';
 import { playCameraWarningSound } from '@/lib/cameraWarningSound';
 import { trpcClient } from '@/lib/trpc';
@@ -651,12 +653,28 @@ export const [TripProvider, useTrips] = createContextHook(() => {
 
     if (!isSpeedCameraRestricted(currentCountry.current)) {
       ensureCamerasNear(newLocation.latitude, newLocation.longitude);
+      const heading = location.coords.heading;
+      const movingFastEnough = speed >= SPEED_CAMERA_MIN_WARN_SPEED_KMH;
+      // GPS course is only trustworthy while actually moving; at very low speed
+      // heading is noisy, so directional filtering only engages when there is
+      // BOTH a valid heading AND real forward speed.
+      const headingReliable =
+        heading !== undefined && heading !== null && heading >= 0 && movingFastEnough;
       const warningCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude, SPEED_CAMERA_WARNING_RADIUS_KM);
       for (const camera of warningCameras) {
-        if (!warnedCameraIds.current.has(camera.id)) {
+        // Directional gate: only warn for cameras AHEAD in the direction of
+        // travel. This removes false positives from cameras behind you, on the
+        // opposite carriageway, or on parallel roads. With a reliable heading we
+        // require the camera inside the forward cone; with no reliable heading we
+        // still warn while moving (radially) so a real camera is never missed,
+        // and stay silent when essentially stopped (you aren't speeding then).
+        const cameraAhead = headingReliable
+          ? isCameraAhead(newLocation.latitude, newLocation.longitude, heading, camera.latitude, camera.longitude)
+          : movingFastEnough;
+        if (cameraAhead && !warnedCameraIds.current.has(camera.id)) {
           warnedCameraIds.current.add(camera.id);
           const limitText = camera.speedLimit ? ` (${camera.speedLimit} km/h limit)` : '';
-          console.log('[SPEED_CAMERA_WARNING] Approaching camera:', camera.id, camera.description);
+          console.log('[SPEED_CAMERA_WARNING] Approaching camera ahead:', camera.id, camera.description);
           playCameraWarningSound().catch(console.error);
           sendLocalNotification(
             '⚠️ Speed Camera Ahead',
@@ -664,13 +682,10 @@ export const [TripProvider, useTrips] = createContextHook(() => {
             { type: 'speed_camera_warning', cameraId: camera.id }
           ).catch(console.error);
         }
-        if (!detectedCameraIds.current.has(camera.id)) {
-          detectedCameraIds.current.add(camera.id);
-          speedCamerasCount.current++;
-          console.log('[SPEED_CAMERA] Counted camera (via warning radius):', camera.id, camera.description);
-        }
       }
 
+      // Trip stat: count a camera as "detected" only once we physically pass
+      // within the tight detection radius (direction-independent).
       const nearbyCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude);
       for (const camera of nearbyCameras) {
         if (!detectedCameraIds.current.has(camera.id)) {
@@ -793,12 +808,28 @@ export const [TripProvider, useTrips] = createContextHook(() => {
 
     if (!isSpeedCameraRestricted(currentCountry.current)) {
       ensureCamerasNear(newLocation.latitude, newLocation.longitude);
+      const heading = location.coords.heading;
+      const movingFastEnough = speed >= SPEED_CAMERA_MIN_WARN_SPEED_KMH;
+      // GPS course is only trustworthy while actually moving; at very low speed
+      // heading is noisy, so directional filtering only engages when there is
+      // BOTH a valid heading AND real forward speed.
+      const headingReliable =
+        heading !== undefined && heading !== null && heading >= 0 && movingFastEnough;
       const warningCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude, SPEED_CAMERA_WARNING_RADIUS_KM);
       for (const camera of warningCameras) {
-        if (!warnedCameraIds.current.has(camera.id)) {
+        // Directional gate: only warn for cameras AHEAD in the direction of
+        // travel. This removes false positives from cameras behind you, on the
+        // opposite carriageway, or on parallel roads. With a reliable heading we
+        // require the camera inside the forward cone; with no reliable heading we
+        // still warn while moving (radially) so a real camera is never missed,
+        // and stay silent when essentially stopped (you aren't speeding then).
+        const cameraAhead = headingReliable
+          ? isCameraAhead(newLocation.latitude, newLocation.longitude, heading, camera.latitude, camera.longitude)
+          : movingFastEnough;
+        if (cameraAhead && !warnedCameraIds.current.has(camera.id)) {
           warnedCameraIds.current.add(camera.id);
           const limitText = camera.speedLimit ? ` (${camera.speedLimit} km/h limit)` : '';
-          console.log('[SPEED_CAMERA_WARNING] Approaching camera:', camera.id, camera.description);
+          console.log('[SPEED_CAMERA_WARNING] Approaching camera ahead:', camera.id, camera.description);
           playCameraWarningSound().catch(console.error);
           sendLocalNotification(
             '⚠️ Speed Camera Ahead',
@@ -806,13 +837,10 @@ export const [TripProvider, useTrips] = createContextHook(() => {
             { type: 'speed_camera_warning', cameraId: camera.id }
           ).catch(console.error);
         }
-        if (!detectedCameraIds.current.has(camera.id)) {
-          detectedCameraIds.current.add(camera.id);
-          speedCamerasCount.current++;
-          console.log('[SPEED_CAMERA] Counted camera (via warning radius):', camera.id, camera.description);
-        }
       }
 
+      // Trip stat: count a camera as "detected" only once we physically pass
+      // within the tight detection radius (direction-independent).
       const nearbyCameras = getNearbyCameras(newLocation.latitude, newLocation.longitude);
       for (const camera of nearbyCameras) {
         if (!detectedCameraIds.current.has(camera.id)) {

@@ -168,6 +168,31 @@ async function sendBatchNotifications(messages: ExpoPushMessage[]): Promise<{ se
   return { sent, failed };
 }
 
+/**
+ * Broadcast a single push notification to every user that has a push token.
+ * Reused by automated server-side events (e.g. a challenge round going live).
+ */
+export async function broadcastPushToAllUsers(params: {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channelId?: string;
+}): Promise<{ sent: number; failed: number; totalUsers: number }> {
+  const users = await getUsersWithPushTokens();
+  if (users.length === 0) {
+    return { sent: 0, failed: 0, totalUsers: 0 };
+  }
+  const messages: ExpoPushMessage[] = users.map((user) => ({
+    to: user.pushToken,
+    title: params.title,
+    body: params.body,
+    data: params.data ?? {},
+    channelId: params.channelId,
+  }));
+  const { sent, failed } = await sendBatchNotifications(messages);
+  return { sent, failed, totalUsers: users.length };
+}
+
 async function getUsersWithPushTokens(): Promise<UserWithToken[]> {
   if (!isDbConfigured()) {
     console.log("[PUSH] Database not configured");
