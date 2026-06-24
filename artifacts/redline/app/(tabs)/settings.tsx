@@ -100,11 +100,11 @@ export default function SettingsScreen() {
   };
 
   const openPrivacyPolicy = () => {
-    void Linking.openURL('https://redlineapp.io/privacy.html');
+    void Linking.openURL('https://redlineapp.io/privacy');
   };
 
   const openTermsOfUse = () => {
-    void Linking.openURL('https://redlineapp.io/terms.html');
+    void Linking.openURL('https://redlineapp.io/terms');
   };
 
   const openHelpCenter = () => {

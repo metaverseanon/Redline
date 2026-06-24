@@ -1182,11 +1182,11 @@ export default function OnboardingScreen() {
         </View>
         <Text style={styles.checkText}>
           I have read and accept the{' '}
-          <Text style={styles.linkInline} onPress={() => void Linking.openURL('https://redline.app/terms')}>
+          <Text style={styles.linkInline} onPress={() => void Linking.openURL('https://redlineapp.io/terms')}>
             Terms of Use
           </Text>{' '}
           and{' '}
-          <Text style={styles.linkInline} onPress={() => void Linking.openURL('https://redline.app/privacy')}>
+          <Text style={styles.linkInline} onPress={() => void Linking.openURL('https://redlineapp.io/privacy')}>
             Privacy Policy
           </Text>
           .
