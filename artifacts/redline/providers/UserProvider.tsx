@@ -288,6 +288,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
 
   const createLocalUser = useCallback(async (data: {
     displayName: string;
+    email?: string;
     carBrand?: string;
     carModel?: string;
     carPicture?: string;
@@ -298,6 +299,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
       const updated: UserProfile = {
         ...existing,
         displayName: data.displayName,
+        email: data.email?.trim().toLowerCase() || existing.email,
         carBrand: data.carBrand ?? existing.carBrand,
         carModel: data.carModel ?? existing.carModel,
         carPicture: data.carPicture ?? existing.carPicture,
@@ -317,7 +319,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
     }
     const newUser: UserProfile = {
       id: Date.now().toString(),
-      email: '',
+      email: data.email?.trim().toLowerCase() || '',
       displayName: data.displayName,
       profilePicture: data.profilePicture,
       carBrand: data.carBrand,

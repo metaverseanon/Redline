@@ -489,6 +489,7 @@ export default function OnboardingScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [carPhoto, setCarPhoto] = useState('');
   const [username, setUsername] = useState('');
+  const [nameEmail, setNameEmail] = useState('');
   const [checkingName, setCheckingName] = useState(false);
   const [nameError, setNameError] = useState('');
   const ratingRequestedRef = useRef(false);
@@ -734,6 +735,17 @@ export default function OnboardingScreen() {
     if (!name) return;
     if (checkingName) return;
 
+    // When the user has not authenticated via Google/Apple/email, an account
+    // can only be created with BOTH a username and a valid email — a username
+    // alone is not enough to create an account.
+    const localEmail = nameEmail.trim().toLowerCase();
+    if (!user) {
+      if (!localEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localEmail)) {
+        setNameError('Enter a valid email to create your account, or sign in with Google or Apple.');
+        return;
+      }
+    }
+
     // Skip the availability check if the user kept their existing name.
     const isOwnName = !!user?.displayName && user.displayName.trim().toLowerCase() === name.toLowerCase();
     if (!isOwnName) {
@@ -771,6 +783,7 @@ export default function OnboardingScreen() {
       } else {
         await createLocalUser({
           displayName: name,
+          email: localEmail,
           carBrand: brand || undefined,
           carModel: model || undefined,
           carPicture: carPhoto || undefined,
@@ -780,7 +793,7 @@ export default function OnboardingScreen() {
       console.warn('[ONBOARDING] save profile failed:', e);
     }
     goNext();
-  }, [username, checkingName, user, updateProfile, persistCar, createLocalUser, brand, model, carPhoto, goNext]);
+  }, [username, nameEmail, checkingName, user, updateProfile, persistCar, createLocalUser, brand, model, carPhoto, goNext]);
 
   const completeOnboarding = useCallback(async () => {
     try {
@@ -1092,10 +1105,29 @@ export default function OnboardingScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           maxLength={24}
-          returnKeyType="done"
+          returnKeyType={user ? 'done' : 'next'}
           onSubmitEditing={handleNameContinue}
         />
       </View>
+      {!user && (
+        <View style={[styles.usernameField, { marginTop: 16 }]}>
+          <TextInput
+            style={styles.usernameInput}
+            placeholder="email"
+            placeholderTextColor="#B0B0B5"
+            value={nameEmail}
+            onChangeText={(t) => {
+              setNameEmail(t);
+              if (nameError) setNameError('');
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            returnKeyType="done"
+            onSubmitEditing={handleNameContinue}
+          />
+        </View>
+      )}
       {checkingName ? (
         <View style={styles.nameStatusRow}>
           <ActivityIndicator size="small" color={RED} />
@@ -1296,7 +1328,10 @@ export default function OnboardingScreen() {
         onPress = goNext;
         break;
       case 'name':
-        disabled = !username.trim() || checkingName;
+        disabled =
+          !username.trim() ||
+          checkingName ||
+          (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nameEmail.trim().toLowerCase()));
         onPress = handleNameContinue;
         break;
       case 'safety':
