@@ -21,7 +21,7 @@ import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import { initializeMeta, metaIdentify } from "@/lib/meta";
 import { initializePostHog, posthogIdentify, posthogReset, PostHogAppProvider } from "@/lib/posthog";
-import { appsflyerSetCustomerUserId } from "@/lib/appsflyer";
+import { initializeAppsFlyer, appsflyerSetCustomerUserId } from "@/lib/appsflyer";
 import * as Location from 'expo-location';
 import {
   useFonts,
@@ -58,29 +58,10 @@ try {
   console.warn('[POSTHOG] Initialization failed:', err?.message ?? err);
 }
 
-if (Platform.OS !== 'web') {
-  try {
-    const appsFlyer = require('react-native-appsflyer').default;
-    appsFlyer.initSdk(
-      {
-        devKey: 'FPDaeC6wQQ2zNXbRLgberm',
-        isDebug: false,
-        appId: '6758342404',
-        onInstallConversionDataListener: true,
-        onDeepLinkListener: true,
-        timeToWaitForATTUserAuthorization: 10,
-      },
-      (result: Record<string, unknown>) => {
-        console.log('[APPSFLYER] Init success:', result);
-      },
-      (error: Record<string, unknown>) => {
-        console.error('[APPSFLYER] Init error:', error);
-      }
-    );
-  } catch (e) {
-    console.warn('[APPSFLYER] Native module not available (expected in Expo Go):', e);
-  }
-}
+void initializeAppsFlyer()
+  .catch((err) => {
+    console.warn('[APPSFLYER] Initialization failed:', err?.message ?? err);
+  });
 
 interface ErrorBoundaryProps {
   children: ReactNode;
