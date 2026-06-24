@@ -25,7 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import Svg, { Circle, G, Line } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -123,6 +123,67 @@ const SETUP_COUNT = SETUP_END - SETUP_START + 1;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+// Speed → color gradient (green → red), mirrors the track-screen gauge.
+function speedColorFor(speed: number): string {
+  const maxSpeed = 200;
+  const clamped = Math.min(Math.max(speed, 0), maxSpeed);
+  const ratio = clamped / maxSpeed;
+  const r = Math.round(255 * ratio);
+  const g = Math.round(200 + (71 - 200) * ratio);
+  const b = Math.round(83 + (87 - 83) * ratio);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function describeArcPath(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
+  const toRad = (a: number) => ((a - 90) * Math.PI) / 180;
+  const sx = cx + r * Math.cos(toRad(startAngle));
+  const sy = cy + r * Math.sin(toRad(startAngle));
+  const ex = cx + r * Math.cos(toRad(endAngle));
+  const ey = cy + r * Math.sin(toRad(endAngle));
+  const large = endAngle - startAngle <= 180 ? 0 : 1;
+  return `M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey}`;
+}
+
+/* ----------------------------- Brand logos ----------------------------- */
+
+function brandLogoUrl(name: string): string | null {
+  if (!name || name === 'Other') return null;
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '-');
+  return `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/optimized/${slug}.png`;
+}
+
+function BrandLogo({
+  name,
+  size,
+  fallbackIconSize,
+}: {
+  name: string;
+  size: number;
+  fallbackIconSize?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const url = brandLogoUrl(name);
+  useEffect(() => {
+    setFailed(false);
+  }, [name]);
+  if (!url || failed) {
+    return <Car size={fallbackIconSize ?? Math.round(size * 0.7)} color={TEXT_DIM} />;
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 const haptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Medium) => {
   if (Platform.OS !== 'web') void Haptics.impactAsync(style);
@@ -144,12 +205,15 @@ function Speedometer({
   unitLabel: string;
   size?: number;
 }) {
-  const R = 92;
-  const CX = 110;
-  const CY = 110;
-  const C = 2 * Math.PI * R;
-  const ARC = 0.75;
-  const arcLen = ARC * C;
+  // Matches the track-screen gauge: 270° sweep (135°→405°), thin round-capped
+  // arc, a dot at the tip, big Orbitron readout, on a dark circular face.
+  const STROKE = 8;
+  const CENTER = size / 2;
+  const RADIUS = (size - STROKE) / 2 - 8;
+  const START = 135;
+  const SWEEP = 270;
+
+  const arcColor = useMemo(() => speedColorFor(target), [target]);
 
   const progress = useSharedValue(0);
   const display = useSharedValue(0);
@@ -160,71 +224,42 @@ function Speedometer({
     display.value = withTiming(target, { duration: 1500, easing: Easing.out(Easing.cubic) });
   }, [target, max, progress, display]);
 
-  const arcProps = useAnimatedProps(() => ({
-    strokeDashoffset: arcLen - arcLen * progress.value,
-  }));
+  const bgPath = useMemo(
+    () => describeArcPath(CENTER, CENTER, RADIUS, START, START + SWEEP),
+    [CENTER, RADIUS],
+  );
+
+  const arcProps = useAnimatedProps(() => {
+    const angle = START + SWEEP * progress.value;
+    const toRad = (a: number) => ((a - 90) * Math.PI) / 180;
+    const sx = CENTER + RADIUS * Math.cos(toRad(START));
+    const sy = CENTER + RADIUS * Math.sin(toRad(START));
+    const ex = CENTER + RADIUS * Math.cos(toRad(angle));
+    const ey = CENTER + RADIUS * Math.sin(toRad(angle));
+    const large = angle - START <= 180 ? 0 : 1;
+    const d = progress.value <= 0.001 ? '' : `M ${sx} ${sy} A ${RADIUS} ${RADIUS} 0 ${large} 1 ${ex} ${ey}`;
+    return { d } as any;
+  });
+
+  const dotProps = useAnimatedProps(() => {
+    const angle = START + SWEEP * progress.value;
+    const toRad = (a: number) => ((a - 90) * Math.PI) / 180;
+    return {
+      cx: CENTER + RADIUS * Math.cos(toRad(angle)),
+      cy: CENTER + RADIUS * Math.sin(toRad(angle)),
+    } as any;
+  });
+
   const numberProps = useAnimatedProps(
     () => ({ text: String(Math.round(display.value)) } as any),
   );
 
-  const ticks = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number; on: boolean }[] = [];
-    const count = 11;
-    for (let i = 0; i < count; i++) {
-      const deg = 135 + (270 * i) / (count - 1);
-      const rad = (deg * Math.PI) / 180;
-      const inner = R - 16;
-      const outer = R - 6;
-      lines.push({
-        x1: CX + inner * Math.cos(rad),
-        y1: CY + inner * Math.sin(rad),
-        x2: CX + outer * Math.cos(rad),
-        y2: CY + outer * Math.sin(rad),
-        on: i / (count - 1) <= target / max,
-      });
-    }
-    return lines;
-  }, [target, max]);
-
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={styles.speedoGlow} />
-      <Svg width={size} height={size} viewBox="0 0 220 220">
-        <G rotation={135} origin="110, 110">
-          <Circle
-            cx={CX}
-            cy={CY}
-            r={R}
-            stroke={TRACK}
-            strokeWidth={14}
-            strokeDasharray={`${arcLen} ${C}`}
-            strokeLinecap="round"
-            fill="none"
-          />
-          <AnimatedCircle
-            cx={CX}
-            cy={CY}
-            r={R}
-            stroke={RED}
-            strokeWidth={14}
-            strokeDasharray={`${arcLen} ${C}`}
-            animatedProps={arcProps}
-            strokeLinecap="round"
-            fill="none"
-          />
-        </G>
-        {ticks.map((t, i) => (
-          <Line
-            key={i}
-            x1={t.x1}
-            y1={t.y1}
-            x2={t.x2}
-            y2={t.y2}
-            stroke={t.on ? '#FFFFFF' : '#48484A'}
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
-        ))}
+    <View style={[styles.gaugeOuter, { width: size, height: size, borderRadius: size / 2 }]}>
+      <Svg width={size} height={size}>
+        <Path d={bgPath} stroke="#2A2A2A" strokeWidth={STROKE} fill="none" strokeLinecap="round" />
+        <AnimatedPath animatedProps={arcProps} stroke={arcColor} strokeWidth={STROKE} fill="none" strokeLinecap="round" />
+        <AnimatedCircle animatedProps={dotProps} r={5} fill={arcColor} />
       </Svg>
       <View style={styles.speedoCenter} pointerEvents="none">
         <AnimatedTextInput
@@ -361,12 +396,14 @@ function PickerModal({
   data,
   onSelect,
   onClose,
+  renderLeading,
 }: {
   visible: boolean;
   title: string;
   data: string[];
   onSelect: (value: string) => void;
   onClose: () => void;
+  renderLeading?: (item: string) => React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
@@ -413,6 +450,7 @@ function PickerModal({
                   onSelect(item);
                 }}
               >
+                {renderLeading ? <View style={styles.pickerRowLeading}>{renderLeading(item)}</View> : null}
                 <Text style={styles.pickerRowText}>{item}</Text>
                 <ChevronRight size={16} color={TEXT_DIM} />
               </TouchableOpacity>
@@ -940,7 +978,14 @@ export default function OnboardingScreen() {
       <Text style={styles.setupSub}>Select the vehicle you drive the most.</Text>
       <View style={styles.brandBadge}>
         <View style={styles.brandBadgeInner}>
-          {brand ? <Text style={styles.brandBadgeText}>{brand}</Text> : <Car size={48} color={TEXT_DIM} />}
+          {brand ? (
+            <>
+              <BrandLogo name={brand} size={72} fallbackIconSize={48} />
+              <Text style={styles.brandBadgeText} numberOfLines={1}>{brand}</Text>
+            </>
+          ) : (
+            <Car size={48} color={TEXT_DIM} />
+          )}
         </View>
       </View>
       <TouchableOpacity
@@ -1304,6 +1349,7 @@ export default function OnboardingScreen() {
         visible={showBrandPicker}
         title="Select brand"
         data={brandNames}
+        renderLeading={(item) => <BrandLogo name={item} size={26} fallbackIconSize={18} />}
         onClose={() => setShowBrandPicker(false)}
         onSelect={(value) => {
           setBrand(value);
@@ -1457,12 +1503,10 @@ const styles = StyleSheet.create({
   },
 
   // Speedometer
-  speedoGlow: {
-    position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    backgroundColor: 'rgba(204,0,0,0.10)',
+  gaugeOuter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0A0A0A',
   },
   speedoCenter: {
     position: 'absolute',
@@ -1470,8 +1514,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   speedoNumber: {
-    fontFamily: FONT_BLACK,
-    fontSize: 60,
+    fontFamily: FONT_BOLD,
+    fontSize: 66,
     color: TEXT,
     padding: 0,
     minWidth: 140,
@@ -1479,10 +1523,11 @@ const styles = StyleSheet.create({
   },
   speedoUnit: {
     fontFamily: FONT_SEMI,
-    fontSize: 13,
+    fontSize: 15,
     color: TEXT_DIM,
-    letterSpacing: 4,
-    marginTop: -4,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginTop: 2,
   },
 
   // Hero text
@@ -1904,15 +1949,16 @@ const styles = StyleSheet.create({
     width: 118,
     height: 118,
     borderRadius: 59,
-    backgroundColor: CARD,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
+    gap: 6,
   },
   brandBadgeText: {
     fontFamily: FONT_BOLD,
-    fontSize: 16,
-    color: TEXT,
+    fontSize: 13,
+    color: '#000000',
     textAlign: 'center',
   },
   selectField: {
@@ -2304,8 +2350,19 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2C2C2E',
   },
   pickerRowText: {
+    flex: 1,
     fontSize: 15,
     color: TEXT,
+  },
+  pickerRowLeading: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    padding: 4,
   },
   pickerEmpty: {
     textAlign: 'center',
