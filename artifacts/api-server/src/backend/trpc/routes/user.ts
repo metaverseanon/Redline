@@ -265,10 +265,40 @@ const getWelcomeEmailHtml = (displayName: string) => `
 </html>
 `;
 
+// Apple Sign-In accounts are keyed on a SYNTHETIC identity address we build on
+// the client (`apple_<credential.user>@privaterelay.appleid.com`). It is NOT a
+// real mailbox, so any email sent to it bounces. Real Apple "Hide My Email"
+// relay addresses are random (e.g. `k2j9x8q@privaterelay.appleid.com`) and have
+// no `apple_` prefix, so this only matches our own placeholder.
+function isSyntheticAppleEmail(email: string): boolean {
+  return /^apple_.+@privaterelay\.appleid\.com$/i.test(email.trim());
+}
+
+// Resolve the address a welcome email should actually go to. Prefer the real
+// email the client forwards (Apple only hands it back on first authorization);
+// otherwise use the stored identity email, but never the synthetic Apple
+// placeholder. Returns null when there is no deliverable address.
+function pickWelcomeEmail(
+  notificationEmail: string | undefined | null,
+  identityEmail: string,
+): string | null {
+  const candidate = notificationEmail?.trim();
+  if (candidate && !isSyntheticAppleEmail(candidate)) return candidate;
+  if (!isSyntheticAppleEmail(identityEmail)) return identityEmail;
+  return null;
+}
+
 async function sendWelcomeEmail(email: string, displayName: string): Promise<boolean> {
   const RESEND_API_KEY = getResendApiKey();
   if (!RESEND_API_KEY) {
     console.log("RESEND_API_KEY not configured, skipping welcome email");
+    return false;
+  }
+
+  // Final safety net: never attempt delivery to a synthetic Apple identity
+  // address — it always bounces and hurts sender reputation.
+  if (isSyntheticAppleEmail(email)) {
+    console.log("Skipping welcome email to synthetic Apple identity address:", email);
     return false;
   }
 
@@ -719,6 +749,10 @@ export const userRouter = createTRPCRouter({
       carBrand: z.string().optional(),
       carModel: z.string().optional(),
       authProvider: z.enum(['email', 'google', 'apple']).optional(),
+      // The real, deliverable email (Apple only returns this on the FIRST
+      // authorization). `email` above is the synthetic identity key for Apple
+      // users; this is where the welcome email should actually be sent.
+      notificationEmail: z.string().email().optional(),
     }))
     .mutation(async ({ input }) => {
       const normalizedEmail = input.email.trim().toLowerCase();
@@ -818,10 +852,18 @@ export const userRouter = createTRPCRouter({
         };
       }
       
-      const emailSent = await sendWelcomeEmail(input.email, input.displayName);
-
-      if (emailSent) {
+      const welcomeTo = pickWelcomeEmail(input.notificationEmail, input.email);
+      let emailSent = false;
+      if (welcomeTo) {
+        emailSent = await sendWelcomeEmail(welcomeTo, input.displayName);
+        if (emailSent) {
+          await updateUserInDb(storedUser.id, { welcomeEmailSent: true });
+        }
+      } else {
+        // No deliverable address (synthetic Apple identity only). Mark as
+        // handled so the backfill job doesn't keep retrying and bouncing.
         await updateUserInDb(storedUser.id, { welcomeEmailSent: true });
+        console.log("[REGISTER] No deliverable email for", input.email, "- skipping welcome email");
       }
 
       return {
@@ -1403,15 +1445,24 @@ export const userRouter = createTRPCRouter({
         console.log("[USER] User inserted via ensureUser:", input.id);
 
         try {
-          const emailSent = await sendWelcomeEmail(input.email, input.displayName);
-          if (emailSent) {
+          const welcomeTo = pickWelcomeEmail(undefined, input.email);
+          const emailSent = welcomeTo
+            ? await sendWelcomeEmail(welcomeTo, input.displayName)
+            : false;
+          // Mark handled on success OR when there is no deliverable address
+          // (synthetic Apple identity) so the backfill job stops retrying.
+          if (emailSent || !welcomeTo) {
             const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}`;
             await fetch(patchUrl, {
               method: "PATCH",
               headers: getSupabaseHeaders(),
               body: JSON.stringify({ welcome_email_sent: true }),
             });
-            console.log("[USER] Welcome email sent via ensureUser to:", input.email);
+            console.log(
+              welcomeTo
+                ? `[USER] Welcome email sent via ensureUser to: ${welcomeTo}`
+                : `[USER] No deliverable email for ${input.email} via ensureUser - skipping`,
+            );
           }
         } catch (e) {
           console.error("[USER] Welcome email send failed in ensureUser:", e);
@@ -1450,6 +1501,18 @@ export const userRouter = createTRPCRouter({
           if (!row.email || !row.display_name) {
             failed++;
             failures.push({ email: row.email ?? "(no email)", reason: "missing email or display_name" });
+            continue;
+          }
+          // Synthetic Apple identity rows have no deliverable address. Mark them
+          // handled (instead of repeatedly bouncing them on every backfill run).
+          if (isSyntheticAppleEmail(row.email)) {
+            const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(row.id)}`;
+            await fetch(patchUrl, {
+              method: "PATCH",
+              headers: getSupabaseHeaders(),
+              body: JSON.stringify({ welcome_email_sent: true }),
+            });
+            console.log("[BACKFILL] Skipped synthetic Apple address:", row.email);
             continue;
           }
           try {

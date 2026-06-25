@@ -676,6 +676,14 @@ export const [UserProvider, useUser] = createContextHook(() => {
         email: identityEmail,
         displayName: fallbackName,
         authProvider: 'apple',
+        // Forward the REAL Apple email (only provided on first authorization) so
+        // the welcome email goes to a deliverable address. `identityEmail` is a
+        // synthetic placeholder that always bounces. A genuine "Hide My Email"
+        // relay (no `apple_` prefix) still forwards, so only the synthetic one
+        // is excluded.
+        ...(capturedAppleEmail && !capturedAppleEmail.toLowerCase().startsWith('apple_')
+          ? { notificationEmail: capturedAppleEmail }
+          : {}),
       });
       // If the account already existed, adopt the canonical backend id/profile
       // so trips/posts created previously still map to this user.
