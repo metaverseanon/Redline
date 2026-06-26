@@ -18,7 +18,8 @@ import {
   Dimensions,
 } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
-import { MapPin, Car, Zap, Navigation, Gauge, Activity, CornerDownRight, Timer, Route, Trophy, Calendar, ChevronDown, UserPlus, UserMinus, Flame, Flag, Users, Star, Rocket, Moon, Shield, Clock, Share2, QrCode, X } from 'lucide-react-native';
+import { MapPin, Car, Zap, Navigation, Gauge, Activity, CornerDownRight, Timer, Route, Trophy, Calendar, ChevronDown, UserPlus, UserMinus, Flame, Flag, Users, Star, Rocket, Moon, Shield, Clock, Share2, QrCode, X, Images } from 'lucide-react-native';
+import ImageLightbox from '@/components/ImageLightbox';
 import * as Linking from 'expo-linking';
 import { useAchievements } from '@/providers/AchievementProvider';
 import { ACHIEVEMENTS, ACHIEVEMENT_CATEGORIES } from '@/constants/achievements';
@@ -63,6 +64,7 @@ interface ProfileData {
   carPicture?: string;
   bio?: string;
   cars?: Array<{ id: string; brand: string; model: string; picture?: string; isPrimary?: boolean }>;
+  gallery?: Array<{ id: string; url: string; createdAt: number }>;
   createdAt: number;
 }
 
@@ -504,6 +506,7 @@ export default function UserProfileScreen() {
   const { trips: ownTrips } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, colors } = useSettings();
   const [expandedCarKey, setExpandedCarKey] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { unlockedAchievements, unlockedCount, totalCount, streak } = useAchievements();
 
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -603,6 +606,7 @@ export default function UserProfileScreen() {
         carModel: user.carModel,
         carPicture: user.carPicture,
         bio: user.bio,
+        gallery: user.gallery || [],
         createdAt: user.createdAt,
       };
     }
@@ -619,6 +623,7 @@ export default function UserProfileScreen() {
         carPicture: p.carPicture ?? undefined,
         bio: p.bio,
         cars: p.cars ?? undefined,
+        gallery: p.gallery ?? undefined,
         createdAt: p.createdAt,
       };
     }
@@ -1090,6 +1095,33 @@ export default function UserProfileScreen() {
           styles={styles}
         />
 
+        {profileUser.gallery && profileUser.gallery.length > 0 && (
+          <View style={styles.gallerySection}>
+            <View style={styles.galleryHeader}>
+              <Images size={18} color={colors.accent} />
+              <Text style={styles.galleryTitle}>GALLERY</Text>
+              <Text style={styles.galleryCount}>{profileUser.gallery.length}</Text>
+            </View>
+            <View style={styles.galleryGrid}>
+              {profileUser.gallery.map((photo, index) => (
+                <TouchableOpacity
+                  key={photo.id}
+                  style={styles.galleryThumb}
+                  activeOpacity={0.85}
+                  onPress={() => setLightboxIndex(index)}
+                >
+                  <ExpoImage
+                    source={{ uri: photo.url }}
+                    style={styles.galleryThumbImage}
+                    contentFit="cover"
+                    transition={150}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {carStats.length === 0 && !isOwnProfile && profileUser.carBrand && (
           <View style={styles.noStatsCard}>
             <Car size={40} color={colors.accent} />
@@ -1110,6 +1142,13 @@ export default function UserProfileScreen() {
           </View>
         )}
       </ScrollView>
+
+      <ImageLightbox
+        visible={lightboxIndex !== null}
+        images={(profileUser.gallery || []).map(g => g.url)}
+        initialIndex={lightboxIndex ?? 0}
+        onClose={() => setLightboxIndex(null)}
+      />
     </>
   );
 }
@@ -1118,6 +1157,51 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  gallerySection: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  galleryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: colors.text,
+  },
+  galleryCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textLight,
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  galleryThumb: {
+    width: '32%',
+    aspectRatio: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+  },
+  galleryThumbImage: {
+    width: '100%',
+    height: '100%',
   },
   centered: {
     justifyContent: 'center',

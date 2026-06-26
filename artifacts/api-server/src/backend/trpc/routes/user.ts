@@ -16,6 +16,22 @@ interface StoredCarData {
   isPrimary?: boolean;
 }
 
+interface GalleryPhoto {
+  id: string;
+  url: string;
+  createdAt: number;
+}
+
+function parseGallery(raw: unknown): GalleryPhoto[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? (parsed as GalleryPhoto[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface StoredUser {
   id: string;
   email: string;
@@ -29,6 +45,7 @@ interface StoredUser {
   profilePicture?: string | null;
   carPicture?: string | null;
   cars?: StoredCarData[] | null;
+  gallery?: GalleryPhoto[] | null;
   createdAt: number;
   welcomeEmailSent: boolean;
   pushToken?: string | null;
@@ -355,6 +372,7 @@ async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; erro
       profile_picture: user.profilePicture,
       car_picture: user.carPicture,
       cars: user.cars ? JSON.stringify(user.cars) : null,
+      gallery: user.gallery ? JSON.stringify(user.gallery) : null,
       created_at: user.createdAt,
       welcome_email_sent: user.welcomeEmailSent,
       push_token: user.pushToken,
@@ -400,6 +418,7 @@ async function updateUserInDb(userId: string, updates: Partial<StoredUser>): Pro
     if (updates.profilePicture !== undefined) dbUpdates.profile_picture = updates.profilePicture;
     if (updates.carPicture !== undefined) dbUpdates.car_picture = updates.carPicture;
     if (updates.cars !== undefined) dbUpdates.cars = updates.cars ? JSON.stringify(updates.cars) : null;
+    if (updates.gallery !== undefined) dbUpdates.gallery = updates.gallery ? JSON.stringify(updates.gallery) : null;
     if (updates.welcomeEmailSent !== undefined) dbUpdates.welcome_email_sent = updates.welcomeEmailSent;
     if (updates.pushToken !== undefined) dbUpdates.push_token = updates.pushToken;
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone;
@@ -467,6 +486,7 @@ async function getAllUsers(): Promise<StoredUser[]> {
       profilePicture: row.profile_picture as string | null | undefined,
       carPicture: row.car_picture as string | null | undefined,
       cars: row.cars ? (typeof row.cars === 'string' ? JSON.parse(row.cars as string) : row.cars) as StoredCarData[] : null,
+      gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
       pushToken: row.push_token as string | null | undefined,
@@ -519,6 +539,7 @@ async function getUserById(userId: string): Promise<StoredUser | null> {
       profilePicture: row.profile_picture as string | null | undefined,
       carPicture: row.car_picture as string | null | undefined,
       cars: row.cars ? (typeof row.cars === 'string' ? JSON.parse(row.cars as string) : row.cars) as StoredCarData[] : null,
+      gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
       pushToken: row.push_token as string | null | undefined,
@@ -571,6 +592,7 @@ async function getUserByEmail(email: string): Promise<StoredUser | null> {
       profilePicture: row.profile_picture as string | null | undefined,
       carPicture: row.car_picture as string | null | undefined,
       cars: row.cars ? (typeof row.cars === 'string' ? JSON.parse(row.cars as string) : row.cars) as StoredCarData[] : null,
+      gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
       pushToken: row.push_token as string | null | undefined,
@@ -942,6 +964,7 @@ export const userRouter = createTRPCRouter({
           profilePicture: user.profilePicture,
           carPicture: user.carPicture,
           cars: user.cars,
+          gallery: user.gallery,
           createdAt: user.createdAt,
         },
       };
@@ -1242,6 +1265,21 @@ export const userRouter = createTRPCRouter({
       return { success: updated };
     }),
 
+  updateGallery: publicProcedure
+    .input(z.object({
+      userId: z.string(),
+      gallery: z.array(z.object({
+        id: z.string(),
+        url: z.string(),
+        createdAt: z.number(),
+      })).max(50),
+    }))
+    .mutation(async ({ input }) => {
+      console.log("[USER] Updating gallery for user:", input.userId, "count:", input.gallery.length);
+      const updated = await updateUserInDb(input.userId, { gallery: input.gallery });
+      return { success: updated, gallery: input.gallery };
+    }),
+
   updateTimezone: publicProcedure
     .input(z.object({
       userId: z.string(),
@@ -1313,6 +1351,7 @@ export const userRouter = createTRPCRouter({
         profilePicture: foundUser.profilePicture,
         carPicture: foundUser.carPicture,
         cars: foundUser.cars,
+        gallery: foundUser.gallery,
         createdAt: foundUser.createdAt,
       };
     }),

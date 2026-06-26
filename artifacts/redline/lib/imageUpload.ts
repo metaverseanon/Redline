@@ -58,7 +58,7 @@ async function doUpload(uploadUrl: string, key: string, localUri: string, fileNa
 export async function uploadImage(
   localUri: string,
   userId: string,
-  type: 'profile' | 'car',
+  type: 'profile' | 'car' | 'gallery',
   carId?: string,
 ): Promise<string | null> {
   const { url, key } = getCredentials();
@@ -76,8 +76,11 @@ export async function uploadImage(
   try {
     const timestamp = Date.now();
     const ext = 'jpg';
+    const rand = Math.random().toString(36).slice(2, 8);
     const baseName = type === 'car' && carId
       ? `${userId}/cars/${carId}_${timestamp}.${ext}`
+      : type === 'gallery'
+      ? `${userId}/gallery/${timestamp}_${rand}.${ext}`
       : `${userId}/${type}_${timestamp}.${ext}`;
 
     const uploadUrl = `${url}/storage/v1/object/${BUCKET_NAME}/${baseName}`;
@@ -106,6 +109,10 @@ export async function uploadProfilePicture(localUri: string, userId: string): Pr
 
 export async function uploadCarPicture(localUri: string, userId: string, carId: string): Promise<string | null> {
   return uploadImage(localUri, userId, 'car', carId);
+}
+
+export async function uploadGalleryImage(localUri: string, userId: string): Promise<string | null> {
+  return uploadImage(localUri, userId, 'gallery');
 }
 
 export async function uploadPostImage(localUri: string, userId: string, postId: string): Promise<string | null> {

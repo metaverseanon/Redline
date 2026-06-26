@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, router } from 'expo-router';
-import { User, Car, ChevronDown, ChevronRight, LogOut, Check, Navigation, Search, Camera, Plus, X, Image as ImageIcon, Eye, EyeOff, CirclePlus, Flame } from 'lucide-react-native';
+import { User, Car, ChevronDown, ChevronRight, LogOut, Check, Navigation, Search, Camera, Plus, X, Image as ImageIcon, Eye, EyeOff, CirclePlus, Flame, Images } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -30,7 +30,9 @@ import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { trpcClient } from '@/lib/trpc';
 import { getDisplayEmail } from '@/lib/appleEmail';
 import { COUNTRIES, getCitiesForCountry } from '@/constants/countries';
-import { UserCar } from '@/types/user';
+import { UserCar, GalleryPhoto } from '@/types/user';
+import { uploadGalleryImage } from '@/lib/imageUpload';
+import ImageLightbox from '@/components/ImageLightbox';
 import SubscriptionSection from '@/components/SubscriptionSection';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -50,7 +52,7 @@ const isValidImageUri = (uri: string | undefined | null): boolean => {
 };
 
 export default function ProfileScreen() {
-  const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, signInWithApple, syncImagesToBackend } = useUser();
+  const { user, isAuthenticated, signUp, signIn, signOut, updateProfile, updateCar, updateLocation, addCar, removeCar, setPrimaryCar, signInWithGoogle, signInWithApple, syncImagesToBackend, updateGallery } = useUser();
   const { isSubscribed, proSinceMillis } = useSubscription();
   const proDurationLabel = formatProDuration(proSinceMillis);
   const { syncUnsyncedTrips } = useTrips();
@@ -98,6 +100,8 @@ export default function ProfileScreen() {
   const [isLocating, setIsLocating] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
   const [showAddCarForm, setShowAddCarForm] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryLightboxIndex, setGalleryLightboxIndex] = useState<number | null>(null);
   const [newCarBrand, setNewCarBrand] = useState('');
   const [newCarModel, setNewCarModel] = useState('');
   const [newCarPicture, setNewCarPicture] = useState('');
@@ -360,6 +364,69 @@ export default function ProfileScreen() {
   const pickProfilePicture = () => showImagePickerOptions('profile');
   const pickCarPicture = () => showImagePickerOptions('car');
   const pickNewCarPicture = () => showImagePickerOptions('newCar');
+
+  const handleAddGalleryPhotos = async () => {
+    if (!user) return;
+    const existing = user.gallery || [];
+    const remaining = 50 - existing.length;
+    if (remaining <= 0) {
+      Alert.alert('Gallery full', 'You can have up to 50 photos. Remove some before adding more.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: Math.min(10, remaining),
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    setGalleryUploading(true);
+    try {
+      const assetsToUpload = result.assets.slice(0, remaining);
+      const uploaded: GalleryPhoto[] = [];
+      for (const asset of assetsToUpload) {
+        const url = await uploadGalleryImage(asset.uri, user.id);
+        if (url) {
+          uploaded.push({
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            url,
+            createdAt: Date.now(),
+          });
+        }
+      }
+      if (uploaded.length > 0) {
+        await updateGallery([...existing, ...uploaded]);
+      }
+      if (uploaded.length < assetsToUpload.length) {
+        Alert.alert('Upload issue', 'Some photos could not be uploaded. Please try again.');
+      }
+    } catch (error) {
+      console.error('[PROFILE] Gallery upload failed:', error);
+      Alert.alert('Upload failed', 'Could not save your photos. Please try again.');
+    } finally {
+      setGalleryUploading(false);
+    }
+  };
+
+  const handleRemoveGalleryPhoto = (id: string) => {
+    if (!user) return;
+    Alert.alert('Remove photo', 'Remove this photo from your gallery?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const next = (user.gallery || []).filter(g => g.id !== id);
+            await updateGallery(next);
+          } catch (error) {
+            console.error('[PROFILE] Gallery remove failed:', error);
+            Alert.alert('Sync failed', 'Could not remove the photo. Please try again.');
+          }
+        },
+      },
+    ]);
+  };
 
   const handleCountrySelect = (countryCode: string) => {
     setSelectedCountry(countryCode);
@@ -1349,6 +1416,59 @@ export default function ProfileScreen() {
             <Text style={styles.addCarButtonText}>ADD ANOTHER CAR</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {renderSectionHeader('CAR GALLERY')}
+      <View style={styles.sectionContent}>
+        <Text style={styles.galleryEditSubtitle}>
+          Show off your build — add real photos others can tap to enlarge.
+        </Text>
+        <View style={styles.galleryEditGrid}>
+          {(user?.gallery || []).map((photo, index) => (
+            <View key={photo.id} style={styles.galleryEditThumbWrap}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setGalleryLightboxIndex(index)}
+                style={styles.galleryEditThumb}
+              >
+                <ExpoImage
+                  source={{ uri: photo.url }}
+                  style={styles.galleryEditThumbImage}
+                  contentFit="cover"
+                  transition={150}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.galleryEditRemove}
+                onPress={() => handleRemoveGalleryPhoto(photo.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X color="#FFFFFF" size={12} />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={styles.galleryEditAdd}
+            onPress={handleAddGalleryPhotos}
+            disabled={galleryUploading}
+            activeOpacity={0.8}
+          >
+            {galleryUploading ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <>
+                <Plus color={colors.accent} size={22} />
+                <Text style={styles.galleryEditAddText}>Add</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+        <ImageLightbox
+          visible={galleryLightboxIndex !== null}
+          images={(user?.gallery || []).map(g => g.url)}
+          initialIndex={galleryLightboxIndex ?? 0}
+          onClose={() => setGalleryLightboxIndex(null)}
+        />
       </View>
 
       <TouchableOpacity
@@ -2502,6 +2622,60 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Orbitron_600SemiBold',
     color: '#FFFFFF',
+  },
+  galleryEditSubtitle: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  galleryEditGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  galleryEditThumbWrap: {
+    width: '31%',
+    aspectRatio: 1,
+    position: 'relative',
+  },
+  galleryEditThumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+  },
+  galleryEditThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryEditRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryEditAdd: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  galleryEditAddText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
   },
   saveButton: {
     backgroundColor: colors.accent,

@@ -6,6 +6,12 @@ export interface UserCar {
   isPrimary?: boolean;
 }
 
+export interface GalleryPhoto {
+  id: string;
+  url: string;
+  createdAt: number;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -18,6 +24,7 @@ export interface UserProfile {
   carModel?: string;
   carPicture?: string;
   cars?: UserCar[];
+  gallery?: GalleryPhoto[];
   bio?: string;
   instagramUsername?: string;
   tiktokUsername?: string;

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
-import { UserProfile, UserCar } from '@/types/user';
+import { UserProfile, UserCar, GalleryPhoto } from '@/types/user';
 import { trpcClient } from '@/lib/trpc';
 import { COUNTRIES } from '@/constants/countries';
 import { uploadProfilePicture, uploadCarPicture } from '@/lib/imageUpload';
@@ -467,6 +467,25 @@ export const [UserProvider, useUser] = createContextHook(() => {
     await saveUser(updatedUser);
   }, []);
 
+  const updateGallery = useCallback(async (gallery: GalleryPhoto[]) => {
+    const currentUser = userRef.current;
+    if (!currentUser) return;
+    const previousGallery = currentUser.gallery;
+    const updatedUser = { ...currentUser, gallery };
+    await saveUser(updatedUser);
+    try {
+      await trpcClient.user.updateGallery.mutate({
+        userId: currentUser.id,
+        gallery: gallery.map(g => ({ id: g.id, url: g.url, createdAt: g.createdAt })),
+      });
+    } catch (error) {
+      console.error('[USER] Failed to sync gallery to backend, rolling back:', error);
+      const latest = userRef.current;
+      if (latest) await saveUser({ ...latest, gallery: previousGallery });
+      throw error;
+    }
+  }, []);
+
   const syncImagesToBackend = useCallback(async () => {
     const currentUser = userRef.current;
     if (!currentUser) return;
@@ -722,11 +741,12 @@ export const [UserProvider, useUser] = createContextHook(() => {
     removeCar,
     setPrimaryCar,
     updateProfilePicture,
+    updateGallery,
     updateCountry,
     updateCity,
     updateLocation,
     getCarDisplayName,
     syncImagesToBackend,
     updateSocialAccounts,
-  }), [user, isLoading, signUp, signIn, createLocalUser, signOut, signInWithGoogle, signInWithApple, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
+  }), [user, isLoading, signUp, signIn, createLocalUser, signOut, signInWithGoogle, signInWithApple, updateProfile, updateCar, addCar, removeCar, setPrimaryCar, updateProfilePicture, updateGallery, updateCountry, updateCity, updateLocation, getCarDisplayName, syncImagesToBackend, updateSocialAccounts]);
 });
