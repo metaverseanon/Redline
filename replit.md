@@ -115,12 +115,22 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   app's client-asserted-userId trust model). Requires a native build to test
   (not Expo Go / web). The synthetic email is the durable identity key and is
   never shown to the user: the real email Apple returns on the first/re-link auth
-  is captured into a **client-only** `UserProfile.appleEmail` (AsyncStorage) and
-  surfaced via `lib/appleEmail.ts` `getDisplayEmail()` on the settings account
-  card + profile EMAIL row (read-only for Apple users, excluded from
-  `updateProfile` so the key can't be overwritten). It resets on reinstall unless
-  the user re-links — persisting it cross-device would need a Supabase column +
-  server sync.
+  is captured into `UserProfile.appleEmail` (AsyncStorage) and surfaced via
+  `lib/appleEmail.ts` `getDisplayEmail()` on the settings account card + profile
+  EMAIL row (read-only for Apple users, excluded from `updateProfile` so the key
+  can't be overwritten).
+  - **Server-side deliverable email (`users.notification_email`):** because the
+    synthetic identity email always bounces, the real email is ALSO persisted
+    server-side in a dedicated `notification_email` column (separate from the
+    identity `email`, which never changes). The client forwards `appleEmail` as
+    `notificationEmail` to both `register` and `ensureUser`; the backend stores it
+    on insert and backfills it onto existing rows when missing (no-clobber on every
+    path: apple re-auth, raced-duplicate, ensureUser existing-row + email-pre-check).
+    `pickWelcomeEmail(notification_email, email)` chooses the send target;
+    `backfillWelcomeEmails` uses it so previously-skipped Apple rows now get the
+    welcome email. Requires a one-time Supabase DDL:
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email text;` (dev+prod
+    share one Supabase, so run once). Prod must be redeployed for ongoing sync.
 
 - **Pro social features (additive, never gate the free path):**
   - **Friends-only private leaderboards** — Pro users create boards and invite by

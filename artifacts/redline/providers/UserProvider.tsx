@@ -121,6 +121,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
           carModel: currentUser.carModel,
           bio: currentUser.bio,
           profilePicture: currentUser.profilePicture || null,
+          notificationEmail: currentUser.appleEmail,
         });
         if (result && 'success' in result && !result.success) {
           console.warn('[USER] ensureUser returned failure:', result);

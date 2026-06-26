@@ -48,6 +48,11 @@ interface StoredUser {
   gallery?: GalleryPhoto[] | null;
   createdAt: number;
   welcomeEmailSent: boolean;
+  // The real, deliverable email for Apple users (Apple only returns it on the
+  // FIRST authorization). Stored server-side so welcome emails + the backfill
+  // job have a deliverable address — the identity `email` is the synthetic
+  // `apple_<id>@privaterelay.appleid.com` placeholder that always bounces.
+  notificationEmail?: string | null;
   pushToken?: string | null;
   timezone?: string;
   weeklyRecapEnabled?: boolean;
@@ -375,6 +380,7 @@ async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; erro
       gallery: user.gallery ? JSON.stringify(user.gallery) : null,
       created_at: user.createdAt,
       welcome_email_sent: user.welcomeEmailSent,
+      notification_email: user.notificationEmail,
       push_token: user.pushToken,
       timezone: user.timezone,
       weekly_recap_enabled: user.weeklyRecapEnabled,
@@ -427,6 +433,7 @@ async function updateUserInDb(userId: string, updates: Partial<StoredUser>): Pro
     if (updates.cars !== undefined) dbUpdates.cars = updates.cars ? JSON.stringify(updates.cars) : null;
     if (updates.gallery !== undefined) dbUpdates.gallery = updates.gallery ? JSON.stringify(updates.gallery) : null;
     if (updates.welcomeEmailSent !== undefined) dbUpdates.welcome_email_sent = updates.welcomeEmailSent;
+    if (updates.notificationEmail !== undefined) dbUpdates.notification_email = updates.notificationEmail;
     if (updates.pushToken !== undefined) dbUpdates.push_token = updates.pushToken;
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone;
     if (updates.weeklyRecapEnabled !== undefined) dbUpdates.weekly_recap_enabled = updates.weeklyRecapEnabled;
@@ -496,6 +503,7 @@ async function getAllUsers(): Promise<StoredUser[]> {
       gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
+      notificationEmail: row.notification_email as string | null | undefined,
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
@@ -549,6 +557,7 @@ async function getUserById(userId: string): Promise<StoredUser | null> {
       gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
+      notificationEmail: row.notification_email as string | null | undefined,
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
@@ -602,6 +611,7 @@ async function getUserByEmail(email: string): Promise<StoredUser | null> {
       gallery: parseGallery(row.gallery),
       createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
       welcomeEmailSent: row.welcome_email_sent as boolean,
+      notificationEmail: row.notification_email as string | null | undefined,
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
@@ -826,6 +836,16 @@ export const userRouter = createTRPCRouter({
         // (Google) email is guessable, so we keep the "already exists" rejection
         // for the email/Google paths to avoid leaking profile data by email.
         if (!input.password && input.authProvider === 'apple') {
+          // If Apple just handed back the real email (first auth on a new device,
+          // or a re-link) and we don't have one stored yet, persist it so welcome
+          // emails / the backfill job have a deliverable address.
+          const incomingReal =
+            input.notificationEmail && !isSyntheticAppleEmail(input.notificationEmail)
+              ? input.notificationEmail.trim()
+              : undefined;
+          if (incomingReal && !existingEmail.notificationEmail) {
+            await updateUserInDb(existingEmail.id, { notificationEmail: incomingReal });
+          }
           return {
             success: true,
             stored: true,
@@ -857,6 +877,14 @@ export const userRouter = createTRPCRouter({
         };
       }
 
+      // Persist the real, deliverable email (Apple's first-auth email, or any
+      // genuine address) so welcome emails + the backfill job have somewhere to
+      // send even when the identity `email` is a synthetic Apple placeholder.
+      const realNotificationEmail =
+        input.notificationEmail && !isSyntheticAppleEmail(input.notificationEmail)
+          ? input.notificationEmail.trim()
+          : undefined;
+
       const passwordHash = input.password ? hashPassword(input.password) : undefined;
       const storedUser: StoredUser = {
         id: input.id,
@@ -869,6 +897,7 @@ export const userRouter = createTRPCRouter({
         carModel: input.carModel,
         createdAt: Date.now(),
         welcomeEmailSent: false,
+        notificationEmail: realNotificationEmail,
       };
 
       const storeResult = await storeUserInDb(storedUser);
@@ -882,6 +911,11 @@ export const userRouter = createTRPCRouter({
           if (input.authProvider === 'apple') {
             const raced = await getUserByEmail(normalizedEmail);
             if (raced) {
+              // Backfill the real deliverable email onto the winning row if it
+              // doesn't have one yet (no-clobber).
+              if (realNotificationEmail && !raced.notificationEmail) {
+                await updateUserInDb(raced.id, { notificationEmail: realNotificationEmail });
+              }
               return {
                 success: true,
                 stored: true,
@@ -1458,29 +1492,47 @@ export const userRouter = createTRPCRouter({
       carModel: z.string().optional(),
       bio: z.string().optional(),
       profilePicture: z.string().nullable().optional(),
+      // Real deliverable email for Apple users (synthetic identity email bounces).
+      notificationEmail: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       console.log("[USER] ensureUser called for:", input.id, input.displayName);
       if (!isDbConfigured()) return { success: false, error: "Database not configured" };
 
+      const realNotificationEmail =
+        input.notificationEmail && !isSyntheticAppleEmail(input.notificationEmail)
+          ? input.notificationEmail.trim()
+          : undefined;
+
       try {
-        const checkUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}&select=id,display_name&limit=1`;
+        const checkUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}&select=id,display_name,notification_email&limit=1`;
         const checkResp = await fetch(checkUrl, { method: "GET", headers: getSupabaseHeaders() });
 
         if (checkResp.ok) {
-          const existing = await checkResp.json();
+          const existing = (await checkResp.json()) as {
+            display_name: string | null;
+            notification_email: string | null;
+          }[];
           if (existing.length > 0) {
             const currentName = existing[0].display_name;
+            const updates: Record<string, unknown> = {};
             if (!currentName || currentName !== input.displayName) {
               console.log("[USER] Updating display_name from", currentName, "to", input.displayName);
-              const updates: Record<string, unknown> = { display_name: input.displayName };
+              updates.display_name = input.displayName;
               if (input.country) updates.country = input.country;
               if (input.city) updates.city = input.city;
               if (input.carBrand) updates.car_brand = input.carBrand;
               if (input.carModel) updates.car_model = input.carModel;
               if (input.bio) updates.bio = input.bio;
               if (input.profilePicture !== undefined) updates.profile_picture = input.profilePicture;
+            }
+            // Backfill the real deliverable email onto the existing row when we
+            // have one (only set it when missing so we never clobber a stored one).
+            if (realNotificationEmail && existing[0].notification_email == null) {
+              updates.notification_email = realNotificationEmail;
+            }
 
+            if (Object.keys(updates).length > 0) {
               const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}`;
               await fetch(patchUrl, {
                 method: "PATCH",
@@ -1503,6 +1555,11 @@ export const userRouter = createTRPCRouter({
           const existingByEmail = await getUserByEmail(trimmedEmail);
           if (existingByEmail) {
             console.log("[USER] ensureUser: email already exists under id", existingByEmail.id, "- skipping insert");
+            // Backfill the real deliverable email when we have one and the stored
+            // row is missing it (no-clobber). Common Apple reconciliation path.
+            if (realNotificationEmail && !existingByEmail.notificationEmail) {
+              await updateUserInDb(existingByEmail.id, { notificationEmail: realNotificationEmail });
+            }
             return { success: true, action: "exists" };
           }
         }
@@ -1520,6 +1577,9 @@ export const userRouter = createTRPCRouter({
           profile_picture: input.profilePicture || null,
           created_at: Date.now(),
           welcome_email_sent: false,
+          // Only include when present so JSON.stringify drops it otherwise — keeps
+          // inserts working for non-Apple users even before the column is added.
+          notification_email: realNotificationEmail,
         };
 
         const resp = await fetch(getSupabaseRestUrl("users"), {
@@ -1566,7 +1626,7 @@ export const userRouter = createTRPCRouter({
         console.log("[USER] User inserted via ensureUser:", input.id);
 
         try {
-          const welcomeTo = pickWelcomeEmail(undefined, input.email);
+          const welcomeTo = pickWelcomeEmail(realNotificationEmail, input.email);
           const emailSent = welcomeTo
             ? await sendWelcomeEmail(welcomeTo, input.displayName)
             : false;
@@ -1603,7 +1663,7 @@ export const userRouter = createTRPCRouter({
       if (!isDbConfigured()) return { success: false, error: "Database not configured" };
 
       try {
-        const url = `${getSupabaseRestUrl("users")}?welcome_email_sent=eq.false&select=id,email,display_name&limit=${input.limit}`;
+        const url = `${getSupabaseRestUrl("users")}?welcome_email_sent=eq.false&select=id,email,display_name,notification_email&limit=${input.limit}`;
         const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
         if (!resp.ok) {
           const err = await resp.text();
@@ -1611,7 +1671,7 @@ export const userRouter = createTRPCRouter({
           return { success: false, error: err };
         }
 
-        const rows = (await resp.json()) as { id: string; email: string; display_name: string }[];
+        const rows = (await resp.json()) as { id: string; email: string; display_name: string; notification_email: string | null }[];
         console.log("[BACKFILL] Found", rows.length, "users without welcome email");
 
         let sent = 0;
@@ -1619,25 +1679,29 @@ export const userRouter = createTRPCRouter({
         const failures: { email: string; reason: string }[] = [];
 
         for (const row of rows) {
-          if (!row.email || !row.display_name) {
+          if (!row.display_name) {
             failed++;
-            failures.push({ email: row.email ?? "(no email)", reason: "missing email or display_name" });
+            failures.push({ email: row.email ?? "(no email)", reason: "missing display_name" });
             continue;
           }
-          // Synthetic Apple identity rows have no deliverable address. Mark them
-          // handled (instead of repeatedly bouncing them on every backfill run).
-          if (isSyntheticAppleEmail(row.email)) {
+          // Prefer the real deliverable email (Apple users) over the identity
+          // email; returns null when neither is deliverable (synthetic + no
+          // notification_email stored).
+          const deliverable = pickWelcomeEmail(row.notification_email, row.email);
+          if (!deliverable) {
+            // No deliverable address at all. Mark handled so we don't keep
+            // bouncing it on every backfill run.
             const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(row.id)}`;
             await fetch(patchUrl, {
               method: "PATCH",
               headers: getSupabaseHeaders(),
               body: JSON.stringify({ welcome_email_sent: true }),
             });
-            console.log("[BACKFILL] Skipped synthetic Apple address:", row.email);
+            console.log("[BACKFILL] Skipped row with no deliverable address:", row.id);
             continue;
           }
           try {
-            const ok = await sendWelcomeEmail(row.email, row.display_name);
+            const ok = await sendWelcomeEmail(deliverable, row.display_name);
             if (ok) {
               const patchUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(row.id)}`;
               await fetch(patchUrl, {
@@ -1648,11 +1712,11 @@ export const userRouter = createTRPCRouter({
               sent++;
             } else {
               failed++;
-              failures.push({ email: row.email, reason: "sendWelcomeEmail returned false" });
+              failures.push({ email: deliverable, reason: "sendWelcomeEmail returned false" });
             }
           } catch (e) {
             failed++;
-            failures.push({ email: row.email, reason: e instanceof Error ? e.message : String(e) });
+            failures.push({ email: deliverable, reason: e instanceof Error ? e.message : String(e) });
           }
           await new Promise((r) => setTimeout(r, 600));
         }
