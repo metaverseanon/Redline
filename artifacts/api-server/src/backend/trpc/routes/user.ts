@@ -348,7 +348,7 @@ async function sendWelcomeEmail(email: string, displayName: string): Promise<boo
   }
 }
 
-async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; error?: string }> {
+async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; error?: string; duplicate?: boolean }> {
   if (!isDbConfigured()) {
     console.log("[DB] Database not configured, skipping user storage");
     return { success: false, error: "Database not configured" };
@@ -388,6 +388,13 @@ async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; erro
 
     if (!response.ok) {
       const errorText = await response.text();
+      // 409 = a concurrent register already inserted this email/display_name.
+      // Surface it as a structured duplicate so the caller can resolve it
+      // gracefully instead of logging it as a hard failure.
+      if (response.status === 409) {
+        console.log("[DB] storeUserInDb duplicate (409) for:", user.email);
+        return { success: false, duplicate: true, error: `Database error (409): ${errorText}` };
+      }
       console.error("Failed to store user - Status:", response.status, "Error:", errorText);
       return { success: false, error: `Database error (${response.status}): ${errorText}` };
     }
@@ -867,6 +874,37 @@ export const userRouter = createTRPCRouter({
       const storeResult = await storeUserInDb(storedUser);
       
       if (!storeResult.success) {
+        // A concurrent register (or retry) already inserted this email/username.
+        // Resolve it as the normal "already exists" path instead of a hard error
+        // so the client gets a coherent response and we don't log noise.
+        if (storeResult.duplicate) {
+          console.log("[REGISTER] Insert raced with an existing account:", input.email);
+          if (input.authProvider === 'apple') {
+            const raced = await getUserByEmail(normalizedEmail);
+            if (raced) {
+              return {
+                success: true,
+                stored: true,
+                existing: true,
+                welcomeEmailSent: false,
+                user: {
+                  id: raced.id,
+                  email: raced.email,
+                  displayName: raced.displayName,
+                  profilePicture: raced.profilePicture ?? null,
+                  country: raced.country,
+                  city: raced.city,
+                  carBrand: raced.carBrand,
+                  carModel: raced.carModel,
+                },
+              };
+            }
+          }
+          return {
+            success: false,
+            error: 'An account with this email or username already exists. Please sign in instead.',
+          };
+        }
         console.error("Failed to store user in database:", input.email, "Error:", storeResult.error);
         return {
           success: false,
@@ -1454,6 +1492,21 @@ export const userRouter = createTRPCRouter({
           }
         }
 
+        // The id-check above missed, but the row may still exist under a
+        // DIFFERENT id with the same email (canonical backend id vs a fresh
+        // local id after reinstall, Apple synthetic-email accounts, etc.).
+        // Inserting would violate users_email_key and — because the client
+        // retries ensureUser with backoff — produce a storm of 409 duplicate
+        // key errors. Pre-check by email and treat the user as present instead.
+        const trimmedEmail = input.email?.trim();
+        if (trimmedEmail) {
+          const existingByEmail = await getUserByEmail(trimmedEmail);
+          if (existingByEmail) {
+            console.log("[USER] ensureUser: email already exists under id", existingByEmail.id, "- skipping insert");
+            return { success: true, action: "exists" };
+          }
+        }
+
         console.log("[USER] User not found in DB, inserting:", input.id);
         const dbUser: Record<string, unknown> = {
           id: input.id,
@@ -1477,6 +1530,35 @@ export const userRouter = createTRPCRouter({
 
         if (!resp.ok) {
           const err = await resp.text();
+          // 409 = a unique-constraint violation. This is EITHER (a) a concurrent
+          // ensureUser/register that already created THIS user's row (id or email
+          // match) — safe to treat as success so the client retry loop stops — OR
+          // (b) a display_name collision with a DIFFERENT user, in which case no
+          // row exists for this user and we must NOT report success (that would
+          // mark the client as synced while it has no backend row). Re-verify
+          // before deciding.
+          if (resp.status === 409) {
+            const stillByEmail = trimmedEmail ? await getUserByEmail(trimmedEmail) : null;
+            let rowExists = !!stillByEmail;
+            if (!rowExists) {
+              try {
+                const verifyUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(input.id)}&select=id&limit=1`;
+                const verifyResp = await fetch(verifyUrl, { method: "GET", headers: getSupabaseHeaders() });
+                if (verifyResp.ok) {
+                  const rows = await verifyResp.json();
+                  rowExists = Array.isArray(rows) && rows.length > 0;
+                }
+              } catch {
+                // fall through to the conflict path below
+              }
+            }
+            if (rowExists) {
+              console.log("[USER] ensureUser insert raced (409) but row exists - treating as exists:", input.id);
+              return { success: true, action: "exists" };
+            }
+            console.error("[USER] ensureUser insert conflict with no matching row (likely display_name taken):", input.displayName);
+            return { success: false, error: "display_name_conflict" };
+          }
           console.error("[USER] ensureUser insert failed:", err);
           return { success: false, error: err };
         }
