@@ -247,6 +247,19 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
           trial: !!product?.introPrice,
           orderId,
         });
+        const planId = String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown");
+        // Fire straight to PostHog (matching subscription_cancelled below). The
+        // $set payload updates the person profile (is_pro / plan) in the same
+        // event so funnels/cohorts can segment on Pro without a noisy $set event.
+        posthogCapture("subscription_started", {
+          plan: planId,
+          price: safeValue,
+          currency,
+          productId,
+          trial: !!product?.introPrice,
+          orderId,
+          $set: { is_pro: true, subscription_plan: planId },
+        });
       } catch (err) {
         console.warn("[RC] post-purchase ad tracking failed:", err);
       }

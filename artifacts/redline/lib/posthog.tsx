@@ -50,6 +50,16 @@ export function posthogCapture(event: string, properties?: Record<string, unknow
   }
 }
 
+export function posthogScreen(name: string, properties?: Record<string, unknown>): void {
+  const c = getClient();
+  if (!c) return;
+  try {
+    c.screen(name, properties);
+  } catch (e) {
+    console.warn('[POSTHOG] screen failed:', (e as any)?.message ?? e);
+  }
+}
+
 export function posthogReset(): void {
   const c = getClient();
   if (!c) return;

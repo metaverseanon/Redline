@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState, Component, ErrorInfo, ReactNode } from "react";
 import { StyleSheet, Platform, View, Text, TouchableOpacity } from "react-native";
@@ -20,7 +20,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import { initializeMeta, metaIdentify } from "@/lib/meta";
-import { initializePostHog, posthogIdentify, posthogReset, PostHogAppProvider } from "@/lib/posthog";
+import { initializePostHog, posthogIdentify, posthogReset, posthogScreen, PostHogAppProvider } from "@/lib/posthog";
 import { initializeAppsFlyer, appsflyerSetCustomerUserId } from "@/lib/appsflyer";
 import * as Location from 'expo-location';
 import {
@@ -220,6 +220,51 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Human-readable PostHog screen names, keyed by expo-router pathname. expo-router
+// sits on React Navigation v7, where screen autocapture is unreliable, so we fire
+// posthog.screen() centrally on every route change instead of per-screen.
+const SCREEN_NAMES: Record<string, string> = {
+  '/': 'Home',
+  '/onboarding': 'Onboarding',
+  '/track': 'Track',
+  '/feed': 'Feed',
+  '/leaderboard': 'Leaderboard',
+  '/recap': 'Recap',
+  '/settings': 'Settings',
+  '/profile': 'Profile',
+  '/achievements': 'Achievements',
+  '/challenges': 'Challenges',
+  '/challenge-complete': 'Challenge Complete',
+  '/create-post': 'Create Post',
+  '/my-posts': 'My Posts',
+  '/notifications': 'Notifications',
+  '/user-profile': 'User Profile',
+  '/whats-new': "What's New",
+};
+
+function humanizePath(path: string): string {
+  const seg = path.replace(/^\/+/, '').split('/').filter(Boolean).pop();
+  if (!seg) return 'Home';
+  return seg
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function ScreenTracker() {
+  const pathname = usePathname();
+  const lastRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!pathname || lastRef.current === pathname) return;
+    lastRef.current = pathname;
+    const name = SCREEN_NAMES[pathname] ?? humanizePath(pathname);
+    posthogScreen(name, { path: pathname });
+  }, [pathname]);
+
+  return null;
+}
 
 function AnalyticsSync() {
   const { user } = useUser();
@@ -453,6 +498,7 @@ export default function RootLayout() {
               <AnalyticsProvider>
               <NotificationProvider>
                 <AnalyticsSync />
+                <ScreenTracker />
                 <PaywallAnalyticsBridge />
                 <OnboardingPaywallTrigger />
                 <PushTokenSync />

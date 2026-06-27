@@ -235,6 +235,18 @@ flow to the custom backend analytics store.
   <userId>` = the `unsubscribeDetectedAt` value) so it fires once per cancellation
   even across cold starts. Props: `plan`/`productId`, `expirationDate`,
   `willRenew`.
+- `subscription_started` — `lib/revenuecat.tsx` `purchaseMutation` success block,
+  fired straight to PostHog via `posthogCapture` (matching `subscription_cancelled`,
+  separate from the dual-sinked `subscribe` event). Carries a `$set` payload
+  (`is_pro:true`, `subscription_plan`) so the same event also updates the PostHog
+  **person profile** (no noisy standalone `$set` event). Props: `plan`, `price`,
+  `currency`, `productId`, `trial`, `orderId`.
+- **Screen views** — centralized in `app/_layout.tsx` via a `ScreenTracker`
+  component (expo-router `usePathname()` → `posthogScreen(name, { path })` on route
+  change). expo-router rides React Navigation v7, where PostHog screen autocapture
+  is unreliable, so `PostHogAppProvider` keeps `captureScreens:false` and we emit
+  screens manually. A `SCREEN_NAMES` path→human-readable map (with a `humanizePath`
+  fallback) names each route. `posthogScreen` lives in `lib/posthog.tsx`.
 - All capture paths are no-ops on web / when `EXPO_PUBLIC_POSTHOG_API_KEY` is
   absent, and wrapped so analytics never breaks the purchase/auth flow. Requires a
   native build (or Expo Go with the key) to emit real events.

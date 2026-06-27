@@ -1,0 +1,68 @@
+I'm using the PostHog React Native SDK (posthog-react-native) for analytics. I need you to add the following tracking events throughout the app. Do not change any existing logic – only add PostHog tracking calls in the right places.
+
+How to access PostHog in a component:
+
+import { usePostHog } from 'posthog-react-native'  
+const posthog = usePostHog()  
+1. Screen tracking
+
+Find where navigation is set up (likely App.js / App.tsx). If using React Navigation v6 or lower, make sure PostHogProvider is a child of NavigationContainer with autocapture enabled:
+
+<NavigationContainer>  
+<PostHogProvider apiKey="..." autocapture>  
+{/* rest of app */}  
+</PostHogProvider>  
+</NavigationContainer>  
+If using React Navigation v7 or higher, autocapture for screens doesn't work reliably. Instead, manually call posthog.screen() inside a useEffect at the top of each screen component:
+
+useEffect(() => {  
+posthog.screen('Home') // use a clear human-readable name for each screen  
+}, [])  
+Add this to every screen in the app with its correct name (e.g. 'Home', 'Paywall', 'Onboarding', 'Settings', 'Profile', etc.).
+
+2. Paywall / upgrade screen
+
+Find the screen or component that shows the Pro paywall or upgrade prompt. Inside a useEffect that fires when the screen mounts, add:
+
+useEffect(() => {  
+posthog.capture('paywall_viewed', {  
+source: 'home_screen', // update to reflect where the paywall was triggered from  
+})  
+}, [])  
+3. Subscription started
+
+Find the purchase handler – wherever a successful subscription or in-app purchase is confirmed (look for RevenueCat's Purchases.purchasePackage, StoreKit completion handlers, or similar). Add immediately after a confirmed success:
+
+posthog.capture('subscription_started', {  
+plan: 'pro_annual', // or 'pro_monthly' – use the actual product identifier  
+price: 29.99, // actual price  
+currency: 'USD',  
+})  
+ 
+// Also update the person profile  
+posthog.identify(currentUserId, {  
+is_pro: true,  
+subscription_plan: 'pro_annual', // match the plan above  
+})  
+4. Account created
+
+Find where a new user successfully completes sign-up. Add immediately after the account is created:
+
+posthog.capture('account_created', {  
+method: 'email', // or 'apple', 'google', etc. – use the actual auth method  
+})  
+5. User signed in
+
+Find ALL sign-in success handlers (there may be multiple – one per auth method: email, Apple, Google, etc.). In each one, add:
+
+posthog.capture('user_signed_in', {  
+method: 'email', // update per auth method  
+})  
+Important rules:
+
+Always call usePostHog() at the top of the component (it's a hook – never call it inside a callback or condition)
+If a capture needs to happen inside a callback (e.g. a button press or async handler), get posthog from usePostHog() at the component level and reference it inside the callback
+Do not remove or modify any existing posthog.capture(...) calls
+Do not add duplicate calls if one already exists for the same event in the same location
+Place capture calls after the action succeeds, not before
+Search for RevenueCat, Purchases, purchasePackage, StoreKit, signIn, createUser, register, auth to find the right places for subscription and auth events
