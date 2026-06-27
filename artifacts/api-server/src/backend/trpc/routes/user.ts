@@ -1564,6 +1564,23 @@ export const userRouter = createTRPCRouter({
           }
         }
 
+        // Pre-check display_name. RedLine enforces a UNIQUE constraint on
+        // users.display_name, so if the name is already taken by a DIFFERENT
+        // account (we already missed by id AND by email above), the INSERT below
+        // is doomed to violate users_display_name_key. Every failed INSERT logs a
+        // Postgres ERROR and the client retries on each app focus, flooding the
+        // DB logs (observed: one stuck user looping ensureUser indefinitely).
+        // Skip the doomed write entirely and report the conflict so the client
+        // can stop retrying.
+        const existingIdForName = await getUserIdByDisplayName(input.displayName);
+        if (existingIdForName && existingIdForName !== input.id) {
+          console.warn(
+            "[USER] ensureUser display_name taken by a different account - skipping insert:",
+            input.displayName,
+          );
+          return { success: false, error: "display_name_conflict" };
+        }
+
         console.log("[USER] User not found in DB, inserting:", input.id);
         const dbUser: Record<string, unknown> = {
           id: input.id,

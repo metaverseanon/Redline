@@ -98,6 +98,7 @@ export const [UserProvider, useUser] = createContextHook(() => {
   }, [user, isLoading]);
 
   const profileSyncedRef = useRef(false);
+  const terminalConflictNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +109,15 @@ export const [UserProvider, useUser] = createContextHook(() => {
 
       const currentUser = userRef.current;
       if (!currentUser?.id || !currentUser?.displayName) return;
+
+      // A display_name collision with a DIFFERENT account is permanent: retrying
+      // (and re-running on every app focus) never succeeds and just floods the
+      // backend with doomed inserts. Skip while this user + name is unchanged; a
+      // future name change OR a different signed-in user re-arms the sync because
+      // the composite key differs. (Keyed by id too so a shared device doesn't
+      // wrongly suppress a legitimate different user with the same name.)
+      const conflictKey = `${currentUser.id}:${currentUser.displayName}`;
+      if (terminalConflictNameRef.current === conflictKey) return;
 
       try {
         console.log('[USER] Ensuring user exists in backend DB:', currentUser.id, currentUser.displayName, retryCount > 0 ? `(retry ${retryCount})` : '');
@@ -124,8 +134,17 @@ export const [UserProvider, useUser] = createContextHook(() => {
           notificationEmail: currentUser.appleEmail,
         });
         if (result && 'success' in result && !result.success) {
+          const backendError = 'error' in result ? String(result.error) : 'Unknown backend error';
+          // A display_name collision with a different account is permanent —
+          // don't throw into the retry loop (that would re-fire forever). Record
+          // the conflicting name so we stop until the user picks a different one.
+          if (backendError === 'display_name_conflict') {
+            console.warn('[USER] ensureUser display_name conflict — not retrying for:', currentUser.displayName);
+            terminalConflictNameRef.current = conflictKey;
+            return;
+          }
           console.warn('[USER] ensureUser returned failure:', result);
-          throw new Error(('error' in result ? String(result.error) : 'Unknown backend error'));
+          throw new Error(backendError);
         }
         profileSyncedRef.current = true;
         console.log('[USER] ensureUser sync complete');
