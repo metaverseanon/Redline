@@ -59,6 +59,10 @@ interface StoredUser {
   latitude?: number | null;
   longitude?: number | null;
   locationUpdatedAt?: number | null;
+  // Opt-in flag controlling whether the user appears on friends' "Nearby
+  // Friends" map. Off by default. Gates visibility only — location writes
+  // (LocationSync / meetup pings) are independent and pre-existing.
+  locationSharingEnabled?: boolean;
   speedUnit?: string;
   distanceUnit?: string;
 }
@@ -384,6 +388,7 @@ async function storeUserInDb(user: StoredUser): Promise<{ success: boolean; erro
       push_token: user.pushToken,
       timezone: user.timezone,
       weekly_recap_enabled: user.weeklyRecapEnabled,
+      location_sharing_enabled: user.locationSharingEnabled,
     };
     
     const response = await fetch(url, {
@@ -437,6 +442,7 @@ async function updateUserInDb(userId: string, updates: Partial<StoredUser>): Pro
     if (updates.pushToken !== undefined) dbUpdates.push_token = updates.pushToken;
     if (updates.timezone !== undefined) dbUpdates.timezone = updates.timezone;
     if (updates.weeklyRecapEnabled !== undefined) dbUpdates.weekly_recap_enabled = updates.weeklyRecapEnabled;
+    if (updates.locationSharingEnabled !== undefined) dbUpdates.location_sharing_enabled = updates.locationSharingEnabled;
     if (updates.latitude !== undefined) dbUpdates.latitude = updates.latitude;
     if (updates.longitude !== undefined) dbUpdates.longitude = updates.longitude;
     if (updates.locationUpdatedAt !== undefined) dbUpdates.location_updated_at = updates.locationUpdatedAt;
@@ -507,6 +513,7 @@ async function getAllUsers(): Promise<StoredUser[]> {
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
+      locationSharingEnabled: row.location_sharing_enabled as boolean | undefined,
       latitude: row.latitude as number | null | undefined,
       longitude: row.longitude as number | null | undefined,
       locationUpdatedAt: row.location_updated_at as number | null | undefined,
@@ -561,6 +568,7 @@ async function getUserById(userId: string): Promise<StoredUser | null> {
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
+      locationSharingEnabled: row.location_sharing_enabled as boolean | undefined,
       latitude: row.latitude as number | null | undefined,
       longitude: row.longitude as number | null | undefined,
       locationUpdatedAt: row.location_updated_at as number | null | undefined,
@@ -615,6 +623,7 @@ async function getUserByEmail(email: string): Promise<StoredUser | null> {
       pushToken: row.push_token as string | null | undefined,
       timezone: row.timezone as string | undefined,
       weeklyRecapEnabled: row.weekly_recap_enabled as boolean | undefined,
+      locationSharingEnabled: row.location_sharing_enabled as boolean | undefined,
       latitude: row.latitude as number | null | undefined,
       longitude: row.longitude as number | null | undefined,
       locationUpdatedAt: row.location_updated_at as number | null | undefined,
@@ -1435,6 +1444,112 @@ export const userRouter = createTRPCRouter({
     .query(async ({ input }) => {
       const user = await getUserById(input.userId);
       return { enabled: user?.weeklyRecapEnabled ?? true };
+    }),
+
+  // Opt-in toggle for appearing on friends' "Nearby Friends" map. Off by
+  // default; visibility-only (does not affect the meetup-ping location pool).
+  setLocationSharing: publicProcedure
+    .input(z.object({
+      userId: z.string(),
+      enabled: z.boolean(),
+    }))
+    .mutation(async ({ input }) => {
+      console.log("[LOCATION_SHARING] Setting sharing for", input.userId, "to", input.enabled);
+      const updated = await updateUserInDb(input.userId, { locationSharingEnabled: input.enabled });
+      if (!updated) {
+        return { success: false, error: "Failed to update location sharing" };
+      }
+      return { success: true, enabled: input.enabled };
+    }),
+
+  getLocationSharing: publicProcedure
+    .input(z.object({
+      userId: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const user = await getUserById(input.userId);
+      return { enabled: user?.locationSharingEnabled ?? false };
+    }),
+
+  // Friends-only nearby map. Returns followed users who have opted into
+  // location sharing and have a recent (last-known) location within range.
+  // Distinct from getNearbyUsers (the meetup-ping pool keyed on push_token).
+  getNearbyFriends: publicProcedure
+    .input(z.object({
+      userId: z.string(),
+      latitude: z.number(),
+      longitude: z.number(),
+      radiusKm: z.number().optional(),
+    }))
+    .query(async ({ input }) => {
+      if (!isDbConfigured()) {
+        console.log("[NEARBY_FRIENDS] DB not configured");
+        return [];
+      }
+
+      const MAX_DISTANCE_KM = input.radiusKm ?? 200;
+      const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // last-known within 7 days
+      const now = Date.now();
+
+      // 1) Who do I follow?
+      const followUrl = `${getSupabaseRestUrl("follows")}?follower_id=eq.${encodeURIComponent(input.userId)}&select=following_id`;
+      const followResp = await fetch(followUrl, { method: "GET", headers: getSupabaseHeaders() });
+      if (!followResp.ok) {
+        const text = await followResp.text();
+        console.error("[NEARBY_FRIENDS] follows fetch error:", followResp.status, text);
+        throw new Error(`Supabase follows ${followResp.status}`);
+      }
+      const followRows = (await followResp.json()) as { following_id: string }[];
+      const followingIds = followRows.map(r => r.following_id).filter(Boolean);
+      if (followingIds.length === 0) {
+        return [];
+      }
+
+      // 2) Of those, who opted in and has a recent location?
+      const inList = followingIds.map(id => `"${id}"`).join(",");
+      const usersUrl =
+        `${getSupabaseRestUrl("users")}?id=in.(${inList})` +
+        `&location_sharing_enabled=eq.true` +
+        `&latitude=not.is.null&longitude=not.is.null&location_updated_at=not.is.null` +
+        `&select=id,display_name,car_brand,car_model,profile_picture,latitude,longitude,location_updated_at`;
+      const usersResp = await fetch(usersUrl, { method: "GET", headers: getSupabaseHeaders() });
+      if (!usersResp.ok) {
+        const text = await usersResp.text();
+        console.error("[NEARBY_FRIENDS] users fetch error:", usersResp.status, text);
+        throw new Error(`Supabase users ${usersResp.status}`);
+      }
+      const rows = (await usersResp.json()) as {
+        id: string;
+        display_name: string;
+        car_brand: string | null;
+        car_model: string | null;
+        profile_picture: string | null;
+        latitude: number;
+        longitude: number;
+        location_updated_at: number;
+      }[];
+
+      // 3) Distance + recency filter, nearest first.
+      const friends = rows
+        .filter(r => r.latitude != null && r.longitude != null)
+        .filter(r => now - Number(r.location_updated_at) <= MAX_AGE_MS)
+        .map(r => ({
+          id: r.id,
+          displayName: r.display_name,
+          carBrand: r.car_brand,
+          carModel: r.car_model,
+          profilePicture: r.profile_picture,
+          latitude: r.latitude,
+          longitude: r.longitude,
+          locationUpdatedAt: Number(r.location_updated_at),
+          distanceKm: Math.round(haversineDistance(input.latitude, input.longitude, r.latitude, r.longitude)),
+        }))
+        .filter(u => u.distanceKm <= MAX_DISTANCE_KM)
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 100);
+
+      console.log("[NEARBY_FRIENDS] Returning", friends.length, "friends within", MAX_DISTANCE_KM, "km");
+      return friends;
     }),
 
   sendFeedback: publicProcedure

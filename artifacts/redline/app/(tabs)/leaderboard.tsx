@@ -1521,6 +1521,20 @@ export default function LeaderboardScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navHeader}>
         <Text style={styles.navTitle}>Leaderboard</Text>
+        <TouchableOpacity
+          style={styles.friendsMapBtn}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            router.push('/nearby-friends' as any);
+          }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <MapPin size={14} color={colors.accent} />
+          <Text style={styles.friendsMapBtnText}>Friends Map</Text>
+        </TouchableOpacity>
       </View>
 
       {pendingIncomingPings.length > 0 && (
@@ -3829,6 +3843,21 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Orbitron_700Bold',
     color: colors.text,
+  },
+  friendsMapBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  friendsMapBtnText: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.accent,
   },
   userLocationBanner: {
     flexDirection: 'row',

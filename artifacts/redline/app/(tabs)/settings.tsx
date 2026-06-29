@@ -26,6 +26,8 @@ export default function SettingsScreen() {
   const [isTogglingNotifications, setIsTogglingNotifications] = useState(false);
   const [isTogglingWeeklyRecap, setIsTogglingWeeklyRecap] = useState(false);
   const [weeklyRecapEnabled, setWeeklyRecapEnabled] = useState(true);
+  const [isTogglingLocationSharing, setIsTogglingLocationSharing] = useState(false);
+  const [locationSharingEnabled, setLocationSharingEnabled] = useState(false);
   const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [socialModalVisible, setSocialModalVisible] = useState(false);
@@ -56,6 +58,19 @@ export default function SettingsScreen() {
       setWeeklyRecapEnabled(weeklyRecapQuery.data.enabled);
     }
   }, [weeklyRecapQuery.data]);
+
+  const locationSharingQuery = trpc.user.getLocationSharing.useQuery(
+    { userId: user?.id || '' },
+    { enabled: !!user?.id }
+  );
+
+  const setLocationSharingMutation = trpc.user.setLocationSharing.useMutation();
+
+  useEffect(() => {
+    if (locationSharingQuery.data !== undefined) {
+      setLocationSharingEnabled(locationSharingQuery.data.enabled);
+    }
+  }, [locationSharingQuery.data]);
 
   const speedOptions: { value: SpeedUnit; label: string }[] = [
     { value: 'kmh', label: 'km/h' },
@@ -259,6 +274,27 @@ export default function SettingsScreen() {
       Alert.alert('Error', 'Failed to update preference. Please try again.');
     } finally {
       setIsTogglingWeeklyRecap(false);
+    }
+  };
+
+  const handleLocationSharingToggle = async (value: boolean) => {
+    if (!user?.id) return;
+
+    setIsTogglingLocationSharing(true);
+    setLocationSharingEnabled(value);
+
+    try {
+      await setLocationSharingMutation.mutateAsync({
+        userId: user.id,
+        enabled: value,
+      });
+      console.log('[SETTINGS] Location sharing preference updated to:', value);
+    } catch (error) {
+      console.error('[SETTINGS] Failed to update location sharing preference:', error);
+      setLocationSharingEnabled(!value);
+      Alert.alert('Error', 'Failed to update preference. Please try again.');
+    } finally {
+      setIsTogglingLocationSharing(false);
     }
   };
 
@@ -1099,6 +1135,33 @@ export default function SettingsScreen() {
                 onValueChange={handleWeeklyRecapToggle}
                 trackColor={{ false: colors.border, true: colors.accent + '80' }}
                 thumbColor={weeklyRecapEnabled ? colors.accent : colors.textLight}
+                disabled={!isAuthenticated}
+              />
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.notificationItem}>
+            <View style={styles.notificationContent}>
+              <View style={styles.settingIconContainer}>
+                <MapPin size={20} color={colors.accent} />
+              </View>
+              <View style={styles.notificationTextContainer}>
+                <Text style={styles.settingLabel}>Share Location with Friends</Text>
+                <Text style={styles.notificationDescription}>
+                  Let people you follow see your last-known location on their Friends Map
+                </Text>
+              </View>
+            </View>
+            {isTogglingLocationSharing ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Switch
+                value={locationSharingEnabled}
+                onValueChange={handleLocationSharingToggle}
+                trackColor={{ false: colors.border, true: colors.accent + '80' }}
+                thumbColor={locationSharingEnabled ? colors.accent : colors.textLight}
                 disabled={!isAuthenticated}
               />
             )}
