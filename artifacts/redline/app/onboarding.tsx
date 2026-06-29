@@ -65,6 +65,7 @@ import {
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
 import { useUser } from '@/providers/UserProvider';
 import { trpcClient } from '@/lib/trpc';
+import { posthogCapture } from '@/lib/posthog';
 import { useSettings, SpeedUnit } from '@/providers/SettingsProvider';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 
@@ -864,6 +865,14 @@ export default function OnboardingScreen() {
     } catch (e) {
       console.warn('[ONBOARDING] Failed to save completion:', e);
     }
+    // Reached only from the final step's continue action — emit its step
+    // completion (the stepIndex effect can't, since nothing advances past it)
+    // and the whole-flow completion event.
+    posthogCapture('onboarding_step_completed', {
+      step: STEPS[STEPS.length - 1],
+      step_number: STEPS.length,
+    });
+    posthogCapture('onboarding_completed');
     if (user) {
       try {
         void syncImagesToBackend();
@@ -885,6 +894,27 @@ export default function OnboardingScreen() {
     }
     router.replace('/(tabs)/track' as any);
   }, [user, syncImagesToBackend, router]);
+
+  // Onboarding funnel: fire a completion event for each step the user advances
+  // past (forward transitions only — backward navigation is ignored). The final
+  // step never advances further, so its completion + the whole-flow
+  // `onboarding_completed` are emitted in completeOnboarding instead.
+  const lastTrackedStepRef = useRef(0);
+  useEffect(() => {
+    const prev = lastTrackedStepRef.current;
+    // Emit one completion per step actually traversed forward. Forward jumps
+    // (e.g. "Maybe later" skipping ahead) cover several indices at once, so fire
+    // for every step in [prev, stepIndex) — not just the immediately previous one
+    // — to keep the funnel complete. The final step ('paywall') is never in this
+    // range (stepIndex can't exceed it) and is emitted by completeOnboarding.
+    for (let i = prev; i < stepIndex; i++) {
+      posthogCapture('onboarding_step_completed', {
+        step: STEPS[i],
+        step_number: i + 1,
+      });
+    }
+    lastTrackedStepRef.current = stepIndex;
+  }, [stepIndex]);
 
   // Auto-advance the "setting up" loader.
   useEffect(() => {

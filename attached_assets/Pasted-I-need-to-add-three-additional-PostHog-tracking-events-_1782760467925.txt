@@ -1,0 +1,38 @@
+I need to add three additional PostHog tracking events to this app. The app uses a custom PostHog wrapper – use whatever capture/screen method already exists in the codebase rather than the raw usePostHog() hook.
+
+Do not modify any existing events. Only add the following:
+
+1. Feature gate events – enrich paywall_viewed with a source property
+
+Find every place where paywall_viewed is already fired. Check if a source property is already being passed. If not, update each call to include a source value that describes what triggered the paywall – for example:
+
+{ source: 'scent_log_limit' } // or 'collection_limit', 'export_feature', 'settings_upgrade', etc.  
+Use a descriptive string that reflects the actual feature or limit that caused the paywall to appear. If the paywall is triggered from multiple places, each call should have a different source value.
+
+2. Onboarding step tracking
+
+Find the onboarding flow (if one exists). For each distinct step or screen in the onboarding sequence, fire an event when the user completes that step and moves forward:
+
+posthog.capture('onboarding_step_completed', {  
+step: 'profile_setup', // use a descriptive slug for each step  
+step_number: 1, // the numeric order of the step  
+})  
+If there's a final onboarding completion (user finishes the whole flow), also fire:
+
+posthog.capture('onboarding_completed')  
+3. subscription_renewed
+
+Find the RevenueCat listener or webhook handler that fires when a subscription renews (look for customerInfoUpdated, entitlementsGranted, or similar renewal callbacks). Add:
+
+posthog.capture('subscription_renewed', {  
+plan: '<plan identifier>',  
+currency: 'USD',  
+})  
+Only fire this for renewals – not for the initial purchase (that's already covered by subscription_started). If RevenueCat doesn't expose a clear renewal event, leave this one out and add a comment explaining where it would go.
+
+Rules:
+
+Use the existing PostHog wrapper/bridge – don't import PostHog directly
+Do not duplicate any existing events
+Do not change any existing logic
+If a feature (e.g. onboarding flow) doesn't exist in the codebase, skip that event and say so

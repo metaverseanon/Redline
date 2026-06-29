@@ -505,6 +505,52 @@ export function SubscriptionProvider({
     };
   }, [value.isAvailable, value.customerInfo, userId]);
 
+  // Detect subscription renewal (a new billing period after the initial
+  // purchase). RevenueCat exposes `latestPurchaseDateMillis` (the most recent
+  // transaction) separately from `originalPurchaseDateMillis` (the first ever).
+  // When the latest transaction is strictly after the original, that most recent
+  // transaction is a renewal — not the initial purchase, which is already tracked
+  // by `subscription_started` in purchaseMutation. Deduped per latest-purchase
+  // timestamp (in-memory + AsyncStorage) so a given renewal fires exactly once,
+  // even across cold starts.
+  const renewLoggedRef = useRef<string>("");
+  useEffect(() => {
+    if (!value.isAvailable) return;
+    const active = value.customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+    if (!active) return;
+    const latest: number | null = active.latestPurchaseDateMillis ?? null;
+    const original: number | null = active.originalPurchaseDateMillis ?? null;
+    // Initial purchase (latest === original) is covered by subscription_started.
+    if (latest == null || original == null || latest <= original) return;
+    const memKey = `${userId ?? "anon"}|${latest}`;
+    if (renewLoggedRef.current === memKey) return;
+    const storageKey = `subscription_renewed_logged:${userId ?? "anon"}`;
+    let aborted = false;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(storageKey);
+        if (aborted) return;
+        if (stored === String(latest)) {
+          renewLoggedRef.current = memKey;
+          return;
+        }
+        renewLoggedRef.current = memKey;
+        await AsyncStorage.setItem(storageKey, String(latest));
+        // currency hardcoded to USD: the entitlement payload doesn't carry price/
+        // currency on renewal (only the StoreKit product does, at purchase time).
+        posthogCapture("subscription_renewed", {
+          plan: active.productIdentifier ?? null,
+          currency: "USD",
+        });
+      } catch (err) {
+        console.warn("[RC] subscription_renewed log failed:", err);
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, [value.isAvailable, value.customerInfo, userId]);
+
   return (
     <Context.Provider value={value}>
       {children}
