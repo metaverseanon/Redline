@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl } from "../db";
 import { cachedOrFetch } from "../cache";
+import { fetchProUserIds } from "./subscription";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -11,7 +12,7 @@ const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
  * "Driver", but the linked `trips` rows still carry a denormalized `user_name`
  * captured at drive time. Returns a map of user_id -> last-known user_name.
  */
-async function fetchTripUserNames(userIds: string[]): Promise<Map<string, string>> {
+export async function fetchTripUserNames(userIds: string[]): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (userIds.length === 0 || !isDbConfigured()) return result;
 
@@ -467,6 +468,7 @@ export const socialRouter = createTRPCRouter({
 
         const missingNameIds = feedUserIds.filter(id => !userMap.get(id)?.displayName?.trim());
         const fallbackNames = await fetchTripUserNames(missingNameIds);
+        const proIds = await fetchProUserIds(feedUserIds);
 
         const activityIds = feedRows.map(r => r.id);
         const activityRevCounts: Record<string, number> = {};
@@ -491,6 +493,7 @@ export const socialRouter = createTRPCRouter({
           id: row.id,
           userId: row.user_id,
           userName: userMap.get(row.user_id)?.displayName?.trim() || fallbackNames.get(row.user_id) || "Driver",
+          userIsPro: proIds.has(row.user_id),
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           type: row.type,
           tripId: row.trip_id,
@@ -663,6 +666,7 @@ export const socialRouter = createTRPCRouter({
         const allUsers: { id: string; display_name: string; profile_picture?: string }[] = usersResp.ok ? await usersResp.json() : [];
 
         const userMap = new Map(allUsers.map(u => [u.id, u]));
+        const proIds = await fetchProUserIds(sortedUserIds);
         const totalAchievements = 23;
 
         return sorted.map(([visitorId, count]) => {
@@ -670,6 +674,7 @@ export const socialRouter = createTRPCRouter({
           return {
             userId: visitorId,
             userName: u?.display_name || 'Driver',
+            userIsPro: proIds.has(visitorId),
             userProfilePicture: u?.profile_picture,
             achievementCount: count,
             totalAchievements,
@@ -885,6 +890,7 @@ export const socialRouter = createTRPCRouter({
 
         const missingNameIds = discoverUserIds.filter(id => !userMap.get(id)?.displayName?.trim());
         const fallbackNames = await fetchTripUserNames(missingNameIds);
+        const proIds = await fetchProUserIds(discoverUserIds);
 
         const activityIds = selected.map(r => r.id);
         const activityRevCounts: Record<string, number> = {};
@@ -910,6 +916,7 @@ export const socialRouter = createTRPCRouter({
           id: row.id,
           userId: row.user_id,
           userName: userMap.get(row.user_id)?.displayName?.trim() || fallbackNames.get(row.user_id) || "Driver",
+          userIsPro: proIds.has(row.user_id),
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           type: row.type,
           tripId: row.trip_id,

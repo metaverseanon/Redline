@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl, getDbConfig } from "../db";
+import { fetchTripUserNames } from "./social";
+import { fetchProUserIds } from "./subscription";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -298,7 +300,7 @@ export const postsRouter = createTRPCRouter({
         console.log("[POSTS] Feed posts fetched (following only):", postRows.length);
 
         const postUserIds = [...new Set(postRows.map(r => r.user_id))];
-        const userMap = new Map<string, { displayName: string; carBrand?: string; carModel?: string; profilePicture?: string }>();
+        const userMap = new Map<string, { displayName?: string; email?: string; carBrand?: string; carModel?: string; profilePicture?: string }>();
 
         if (postUserIds.length > 0) {
           const idsParam = postUserIds.map(id => `"${id}"`).join(',');
@@ -308,13 +310,18 @@ export const postsRouter = createTRPCRouter({
 
           for (const u of allUsers) {
             userMap.set(u.id, {
-              displayName: u.display_name || u.email?.split('@')[0] || 'Driver',
+              displayName: u.display_name,
+              email: u.email,
               carBrand: u.car_brand,
               carModel: u.car_model,
               profilePicture: u.profile_picture,
             });
           }
         }
+
+        const missingNameIds = postUserIds.filter(id => !userMap.get(id)?.displayName?.trim());
+        const fallbackNames = await fetchTripUserNames(missingNameIds);
+        const proIds = await fetchProUserIds(postUserIds);
 
         const postIds = postRows.map((p) => p.id);
         let revCounts: Record<string, number> = {};
@@ -338,7 +345,11 @@ export const postsRouter = createTRPCRouter({
         return postRows.map((row) => ({
           id: row.id,
           userId: row.user_id,
-          userName: userMap.get(row.user_id)?.displayName ?? "Driver",
+          userName: userMap.get(row.user_id)?.displayName?.trim()
+            || fallbackNames.get(row.user_id)
+            || userMap.get(row.user_id)?.email?.split('@')[0]
+            || "Driver",
+          userIsPro: proIds.has(row.user_id),
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           userCarBrand: userMap.get(row.user_id)?.carBrand,
           userCarModel: userMap.get(row.user_id)?.carModel,
@@ -670,15 +681,20 @@ export const postsRouter = createTRPCRouter({
         const usersResp = await fetch(usersUrl, { method: "GET", headers: getSupabaseHeaders() });
         const allUsers: Record<string, any>[] = usersResp.ok ? await usersResp.json() : [];
 
-        const userMap = new Map<string, { displayName: string; carBrand?: string; carModel?: string; profilePicture?: string }>();
+        const userMap = new Map<string, { displayName?: string; email?: string; carBrand?: string; carModel?: string; profilePicture?: string }>();
         for (const u of allUsers) {
           userMap.set(u.id, {
-            displayName: u.display_name || u.email?.split('@')[0] || 'Driver',
+            displayName: u.display_name,
+            email: u.email,
             carBrand: u.car_brand,
             carModel: u.car_model,
             profilePicture: u.profile_picture,
           });
         }
+
+        const missingNameIds = userIds.filter(id => !userMap.get(id)?.displayName?.trim());
+        const fallbackNames = await fetchTripUserNames(missingNameIds);
+        const proIds = await fetchProUserIds(userIds);
 
         const postIds = selected.map((p) => p.id);
         let revCounts: Record<string, number> = {};
@@ -703,7 +719,11 @@ export const postsRouter = createTRPCRouter({
         return selected.map((row) => ({
           id: row.id,
           userId: row.user_id,
-          userName: userMap.get(row.user_id)?.displayName ?? "Driver",
+          userName: userMap.get(row.user_id)?.displayName?.trim()
+            || fallbackNames.get(row.user_id)
+            || userMap.get(row.user_id)?.email?.split('@')[0]
+            || "Driver",
+          userIsPro: proIds.has(row.user_id),
           userProfilePicture: userMap.get(row.user_id)?.profilePicture,
           userCarBrand: userMap.get(row.user_id)?.carBrand,
           userCarModel: userMap.get(row.user_id)?.carModel,

@@ -221,6 +221,35 @@ export async function getActiveProCount(): Promise<number> {
 }
 
 /**
+ * Given a list of user ids, return the subset that is *currently* Pro
+ * (is_pro true AND not expired). Used to surface a Pro badge next to other
+ * users' names in feeds / leaderboards. Read-only and never trusts the client.
+ */
+export async function fetchProUserIds(userIds: string[]): Promise<Set<string>> {
+  const result = new Set<string>();
+  if (userIds.length === 0 || !isDbConfigured()) return result;
+  try {
+    const idsParam = userIds.map((id) => `"${id}"`).join(",");
+    const url = `${getSupabaseRestUrl(
+      "users",
+    )}?id=in.(${idsParam})&is_pro=eq.true&select=id,pro_expires_at`;
+    const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+    if (!resp.ok) {
+      console.error("[SUBSCRIPTION] fetchProUserIds failed", resp.status);
+      return result;
+    }
+    const rows = (await resp.json()) as ProUserRow[];
+    const now = Date.now();
+    for (const r of rows) {
+      if (r.pro_expires_at == null || r.pro_expires_at > now) result.add(r.id);
+    }
+  } catch (err) {
+    console.error("[SUBSCRIPTION] fetchProUserIds error:", err);
+  }
+  return result;
+}
+
+/**
  * Reconciliation backfill: scan a stable page of users and mirror each one's
  * CURRENT RevenueCat entitlement into `users.is_pro` / `pro_expires_at`. Only
  * rows whose status actually changes are written. Returns a summary plus

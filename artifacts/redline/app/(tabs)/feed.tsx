@@ -26,12 +26,14 @@ import AuthGate from '@/components/AuthGate';
 import CommentsModal from '@/components/CommentsModal';
 import SoundtrackBadge from '@/components/SoundtrackBadge';
 import { Soundtrack } from '@/types/trip';
+import ProBadge from '@/components/ProBadge';
 
 interface FeedItem {
   id: string;
   userId: string;
   userName: string;
   userProfilePicture?: string;
+  userIsPro?: boolean;
   type: string;
   tripId?: string;
   carModel?: string;
@@ -50,6 +52,7 @@ interface PostItem {
   userId: string;
   userName: string;
   userProfilePicture?: string;
+  userIsPro?: boolean;
   userCarBrand?: string;
   userCarModel?: string;
   text?: string;
@@ -398,7 +401,10 @@ export default function FeedScreen() {
             )}
           </View>
           <View style={styles.feedHeaderInfo}>
-            <Text style={styles.feedUserName} numberOfLines={1}>{item.userName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[styles.feedUserName, { flexShrink: 1 }]} numberOfLines={1}>{item.userName}</Text>
+              {item.userIsPro && <ProBadge size="sm" />}
+            </View>
             <Text style={styles.feedTime}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
           {showFollowButton && item.userId !== user?.id && (
@@ -507,7 +513,10 @@ export default function FeedScreen() {
             )}
           </View>
           <View style={styles.feedHeaderInfo}>
-            <Text style={styles.feedUserName} numberOfLines={1}>{item.userName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[styles.feedUserName, { flexShrink: 1 }]} numberOfLines={1}>{item.userName}</Text>
+              {item.userIsPro && <ProBadge size="sm" />}
+            </View>
             <Text style={styles.feedTime}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
           {showFollowButton && item.userId !== user?.id ? (

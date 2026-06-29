@@ -45,6 +45,7 @@ interface LeaderboardTrip extends TripStats {
   userId?: string;
   userName?: string;
   userProfilePicture?: string;
+  userIsPro?: boolean;
   routePoints?: RoutePoint[];
 }
 
@@ -1902,9 +1903,12 @@ export default function LeaderboardScreen() {
                         <Text style={styles.podiumRankBadgeText}>{rank}</Text>
                       </View>
                     </View>
-                    <Text style={[styles.podiumName, isFirst && styles.podiumNameFirst]} numberOfLines={1}>
-                      {isMe ? 'You' : (trip.userName || 'Driver')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <Text style={[styles.podiumName, isFirst && styles.podiumNameFirst, { flexShrink: 1 }]} numberOfLines={1}>
+                        {isMe ? 'You' : (trip.userName || 'Driver')}
+                      </Text>
+                      {trip.userIsPro && <ProBadge size="sm" />}
+                    </View>
                     <Text style={[styles.podiumValue, isFirst && styles.podiumValueFirst]}>{formatValue(trip)}</Text>
                     {car && (
                       <Text style={styles.podiumCarText} numberOfLines={1}>{car.full}</Text>
@@ -2023,6 +2027,7 @@ export default function LeaderboardScreen() {
                       <Text style={styles.competitorName} numberOfLines={1}>
                         {isCurrentUser ? 'You' : (trip.userName || 'Driver')}
                       </Text>
+                      {trip.userIsPro && <ProBadge size="sm" />}
                       {isCurrentUser && (
                         <View style={styles.activeBadge}>
                           <Text style={styles.activeBadgeText}>ACTIVE</Text>

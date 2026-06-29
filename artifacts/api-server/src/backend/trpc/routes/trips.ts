@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl } from "../db";
 import { cachedOrFetch, cacheInvalidatePrefix, cacheGet, cacheSet } from "../cache";
+import { fetchProUserIds } from "./subscription";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -244,6 +245,7 @@ const TripStatsSchema = z.object({
   userId: z.string(),
   userName: z.string().optional(),
   userProfilePicture: z.string().optional(),
+  userIsPro: z.boolean().optional(),
   startTime: z.number(),
   endTime: z.number().optional(),
   distance: z.number(),
@@ -421,7 +423,9 @@ async function enrichTripsWithUserCars(trips: SyncedTrip[]): Promise<SyncedTrip[
   
   console.log('[LEADERBOARD] Enriching info for', uniqueUserIds.length, 'users (car:', userIdsNeedingCar.length, ', pic:', userIdsNeedingPic.length, ')');
 
-  if (allNeededIds.length === 0) return trips;
+  // Pro status powers the crown badge next to leaderboard names. Always
+  // resolved for every user (independent of the car/pic enrichment).
+  const proIds = await fetchProUserIds(uniqueUserIds);
 
   try {
     const userCarMap = new Map<string, string>();
@@ -448,21 +452,18 @@ async function enrichTripsWithUserCars(trips: SyncedTrip[]): Promise<SyncedTrip[
     console.log('[LEADERBOARD] Found car info for', userCarMap.size, ', pics for', userProfilePicMap.size, 'users');
 
     return trips.map(trip => {
-      const updates: Partial<SyncedTrip> = {};
+      const updates: Partial<SyncedTrip> = { userIsPro: proIds.has(trip.userId) };
       if (!trip.carModel && userCarMap.has(trip.userId)) {
         updates.carModel = userCarMap.get(trip.userId);
       }
       if (!trip.userProfilePicture && userProfilePicMap.has(trip.userId)) {
         updates.userProfilePicture = userProfilePicMap.get(trip.userId);
       }
-      if (Object.keys(updates).length > 0) {
-        return { ...trip, ...updates };
-      }
-      return trip;
+      return { ...trip, ...updates };
     });
   } catch (error) {
     console.error('[LEADERBOARD] Error enriching trip info:', error);
-    return trips;
+    return trips.map(trip => ({ ...trip, userIsPro: proIds.has(trip.userId) }));
   }
 }
 
