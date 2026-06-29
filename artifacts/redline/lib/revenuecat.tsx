@@ -9,6 +9,7 @@ import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
 import { appsflyerTrackSubscribe, appsflyerTrackPurchase } from "@/lib/appsflyer";
 import { posthogCapture } from "@/lib/posthog";
 import { trpc } from "@/lib/trpc";
+import * as sw from "@/lib/superwall";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -107,6 +108,86 @@ function logPaywallEvent(event: string, properties?: Record<string, unknown>) {
   }
 }
 
+// Fire the "subscribe attempt started" analytics event. Extracted so both the
+// RevenueCat purchaseMutation and the Superwall purchase controller emit identical
+// events (PostHog funnel + custom analytics via logPaywallEvent's handler).
+export function recordSubscribeTapped(opts: {
+  product?: any;
+  planType?: string | null;
+  productId?: string | null;
+}) {
+  try {
+    const product = opts.product ?? {};
+    logPaywallEvent("subscribe_tapped", {
+      plan: String(opts.planType ?? "unknown"),
+      productId: String(product?.identifier ?? opts.productId ?? "unknown"),
+      value: Number(product?.price ?? 0),
+      currency: String(product?.currencyCode ?? "USD"),
+      trial: !!product?.introPrice,
+    });
+  } catch (err) {
+    console.warn("[RC] subscribe_tapped log failed:", err);
+  }
+}
+
+// Fire all post-purchase analytics (ad SDKs + PostHog + funnel events). Extracted
+// from purchaseMutation so the Superwall purchase controller preserves attribution
+// parity. `customerInfo` is the RevenueCat result; `product` is the StoreProduct.
+export function recordSuccessfulPurchase(opts: {
+  product?: any;
+  planType?: string | null;
+  productId?: string | null;
+  customerInfo?: any;
+}) {
+  try {
+    const product = opts.product ?? {};
+    const value = Number(product?.price ?? 0);
+    const currency = String(product?.currencyCode ?? "USD");
+    const productId = String(product?.identifier ?? opts.productId ?? "unknown");
+    const productName = String(product?.title ?? product?.description ?? productId);
+    // TikTok uses eventId for DEDUPLICATION — identical eventIds are dropped.
+    // Build a unique id per purchase: latest purchase timestamp (unique per txn)
+    // plus a random suffix so even same-millisecond retries are distinct.
+    const purchaseMillis =
+      opts.customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis;
+    const orderId = `${productId}_${purchaseMillis ?? Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Fire even if price comes back as 0 (StoreKit sometimes returns 0 in sandbox /
+    // before product metadata hydrates) — ad SDKs still need the event. Use a safe
+    // fallback value.
+    const safeValue = value > 0 ? value : 0.01;
+    void tiktokTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
+    void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
+    void metaTrackSubscribe({ value: safeValue, currency, productId, productName, orderId });
+    void metaTrackPurchase({ value: safeValue, currency, productId, orderId });
+    void appsflyerTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
+    void appsflyerTrackPurchase({ value: safeValue, currency, productId, orderId });
+    logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
+    const planId = String(opts.planType ?? "unknown");
+    logPaywallEvent("subscribe", {
+      plan: planId,
+      value: safeValue,
+      currency,
+      productId,
+      trial: !!product?.introPrice,
+      orderId,
+    });
+    // Fire straight to PostHog (matching subscription_cancelled). The $set payload
+    // updates the person profile (is_pro / plan) in the same event so funnels/
+    // cohorts can segment on Pro without a noisy $set event.
+    posthogCapture("subscription_started", {
+      plan: planId,
+      price: safeValue,
+      currency,
+      productId,
+      trial: !!product?.introPrice,
+      orderId,
+      $set: { is_pro: true, subscription_plan: planId },
+    });
+  } catch (err) {
+    console.warn("[RC] post-purchase ad tracking failed:", err);
+  }
+}
+
 function notifyConfigChange() {
   for (const listener of configListeners) {
     try {
@@ -201,68 +282,21 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
   const purchaseMutation = useMutation({
     mutationFn: async (packageToPurchase: any) => {
       if (!enabled) throw new Error("Purchases unavailable on this platform");
-      try {
-        const tappedProduct = packageToPurchase?.product ?? {};
-        logPaywallEvent("subscribe_tapped", {
-          plan: String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown"),
-          productId: String(tappedProduct?.identifier ?? packageToPurchase?.identifier ?? "unknown"),
-          value: Number(tappedProduct?.price ?? 0),
-          currency: String(tappedProduct?.currencyCode ?? "USD"),
-          trial: !!tappedProduct?.introPrice,
-        });
-      } catch (err) {
-        console.warn("[RC] subscribe_tapped log failed:", err);
-      }
+      const planType = String(
+        packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown"
+      );
+      recordSubscribeTapped({
+        product: packageToPurchase?.product,
+        planType,
+        productId: packageToPurchase?.identifier,
+      });
       const { customerInfo } = await PurchasesModule.purchasePackage(packageToPurchase);
-      try {
-        const product = packageToPurchase?.product ?? {};
-        const value = Number(product?.price ?? 0);
-        const currency = String(product?.currencyCode ?? "USD");
-        const productId = String(product?.identifier ?? packageToPurchase?.identifier ?? "unknown");
-        const productName = String(product?.title ?? product?.description ?? productId);
-        // TikTok uses eventId for DEDUPLICATION — identical eventIds are dropped.
-        // Never use originalAppUserId here (it's the constant RC user id, so every
-        // repeat Subscribe would be deduped and silently never record). Build a
-        // unique id per purchase: latest purchase timestamp (unique per txn) plus
-        // a random suffix so even same-millisecond retries are distinct.
-        const purchaseMillis =
-          customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER]?.latestPurchaseDateMillis;
-        const orderId = `${productId}_${purchaseMillis ?? Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        // Fire even if price comes back as 0 (StoreKit sometimes returns 0 in
-        // sandbox / before product metadata hydrates) — TikTok still needs the
-        // event for attribution. Use a safe fallback value.
-        const safeValue = value > 0 ? value : 0.01;
-        void tiktokTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
-        void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
-        void metaTrackSubscribe({ value: safeValue, currency, productId, productName, orderId });
-        void metaTrackPurchase({ value: safeValue, currency, productId, orderId });
-        void appsflyerTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
-        void appsflyerTrackPurchase({ value: safeValue, currency, productId, orderId });
-        logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
-        logPaywallEvent("subscribe", {
-          plan: String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown"),
-          value: safeValue,
-          currency,
-          productId,
-          trial: !!product?.introPrice,
-          orderId,
-        });
-        const planId = String(packageToPurchase?.packageType ?? packageToPurchase?.identifier ?? "unknown");
-        // Fire straight to PostHog (matching subscription_cancelled below). The
-        // $set payload updates the person profile (is_pro / plan) in the same
-        // event so funnels/cohorts can segment on Pro without a noisy $set event.
-        posthogCapture("subscription_started", {
-          plan: planId,
-          price: safeValue,
-          currency,
-          productId,
-          trial: !!product?.introPrice,
-          orderId,
-          $set: { is_pro: true, subscription_plan: planId },
-        });
-      } catch (err) {
-        console.warn("[RC] post-purchase ad tracking failed:", err);
-      }
+      recordSuccessfulPurchase({
+        product: packageToPurchase?.product,
+        planType,
+        productId: packageToPurchase?.identifier,
+        customerInfo,
+      });
       return customerInfo;
     },
     onSuccess: () => {
@@ -311,6 +345,30 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         logPaywallEvent("paywall_not_presented", { source, reason: "web" });
         return "not_presented";
       }
+
+      // When Superwall is configured it takes over paywall presentation
+      // everywhere (Option A). RevenueCat remains the purchase backend via the
+      // Superwall purchase controller. The RC CustomPaywallModal below is the
+      // automatic fallback only when Superwall is NOT configured or its bridge
+      // hasn't mounted yet (registerSuperwallPlacement returns null).
+      if (sw.isSuperwallConfigured()) {
+        const swResult = await sw.registerSuperwallPlacement(source, {
+          onPresented: () => {
+            logPaywallEvent("paywall_presented", { source, presenter: "superwall" });
+            logPaywallEvent("paywall_viewed", { source, presenter: "superwall" });
+          },
+        });
+        if (swResult !== null) {
+          if (swResult === "purchased" || swResult === "restored") {
+            void queryClient.invalidateQueries({ queryKey: ["revenuecat", "customer-info"] });
+          }
+          logPaywallEvent("paywall_closed", { source, result: swResult, presenter: "superwall" });
+          return swResult;
+        }
+        // Bridge not mounted yet — fall through to the RC modal path.
+        logPaywallEvent("paywall_superwall_fallback", { source });
+      }
+
       if (!isConfigured) {
         lastPaywallErrorRef.current =
           "RevenueCat SDK is not configured. The RevenueCat API key is missing from this build. Ask the developer to set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS environment and rebuild.";

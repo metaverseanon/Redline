@@ -54,6 +54,18 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   in `eas.json` production `env` so they're baked into production builds. The
   access token is required client-side by TikTok's SDK design; treat as
   semi-public and rotate from Events Manager.
+- `EXPO_PUBLIC_SUPERWALL_IOS_API_KEY` / `EXPO_PUBLIC_SUPERWALL_ANDROID_API_KEY` —
+  Superwall **public** client keys (from the Superwall dashboard). A single key is
+  acceptable — `lib/superwall.tsx` falls back to the other platform's key if only
+  one is set. Requested as a Replit **secret** so dev builds / Expo Go-with-dev-
+  client pick it up at runtime. For **production** EAS builds, add the SAME public
+  key(s) to `eas.json` production `env` (safe to commit, mirroring the TikTok /
+  PostHog public keys) and rebuild. **Do NOT add a placeholder/empty key to
+  `eas.json`:** a truthy-but-wrong key makes Superwall try to configure and then
+  error on `registerPlacement` — which returns `"error"` (not `null`), so the app
+  would NOT fall back to the RC paywall and prod paywalls would break. Leave the
+  keys out entirely until the real public key is available (no key ⇒ clean RC
+  fallback).
 
 ## Key commands
 
@@ -100,6 +112,34 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   status / upgrade / manage / restore controls and is mounted on the profile screen.
   Native modules are lazily required and the whole feature short-circuits to a
   clean "unavailable" state on web.
+- **Paywall presentation (Superwall, layered over RevenueCat):** `expo-superwall`
+  (auto-links, NO config plugin in `app.json`). **Option A** — when a Superwall
+  public key is configured, Superwall takes over paywall presentation EVERYWHERE
+  via the existing imperative `presentPaywall(source)`; RevenueCat stays the
+  purchase + entitlement backend through a Superwall `CustomPurchaseController`.
+  The existing `CustomPaywallModal` is the **automatic fallback** when Superwall
+  is unconfigured (web / Expo Go / no key) OR its bridge hasn't mounted yet — so
+  with no key, behavior is byte-for-byte unchanged. `lib/superwall.tsx`:
+  lazy-requires the native modules (guarded by `Platform.OS !== 'web'`);
+  `isSuperwallConfigured()` gates everything; `SuperwallBridge` (usePlacement)
+  sets a module-level resolver and `registerSuperwallPlacement(source)` returns
+  `PaywallResult | null` (**null = bridge not mounted ⇒ caller falls back to RC
+  modal**). The placement name IS the existing `source` string, so all ~10 trigger
+  sites work unchanged. Results settle **deterministically from SW callbacks**
+  (onDismiss → purchased/restored/cancelled, onSkip / feature-grant →
+  not_presented, onError → error) — never from a fixed-time inference (a long
+  multi-minute safety timer only prevents a hung awaiter). The purchase controller
+  (`onPurchase`/`onPurchaseRestore`) delegates to `react-native-purchases`
+  (`getProducts` → `purchaseStoreProduct`) and reuses the EXACT analytics via
+  `recordSubscribeTapped` / `recordSuccessfulPurchase` (extracted from
+  `purchaseMutation`, same ad-SDK + PostHog + funnel events). `SuperwallGate` is
+  mounted in `_layout.tsx` inside `RevenueCatUserSync` + `UserProvider` so
+  `SuperwallSync` can mirror app user id (`identify`) and RC entitlement
+  (`setSubscriptionStatus` ACTIVE/INACTIVE) into Superwall; `SuperwallProvider`
+  renders children unconditionally so it never blocks app startup. Requires a
+  native EAS rebuild + dashboard paywall/placement config (user-owned). The two
+  `lib/superwall.tsx` ↔ `lib/revenuecat.tsx` imports are circular but safe
+  (namespace imports, cross-calls only at runtime).
 - **Sign in with Apple (iOS):** `expo-apple-authentication` (`ios.usesAppleSignIn:true`
   + plugin in `app.json`). Button is the official `AppleAuthenticationButton`,
   gated on `Platform.OS === 'ios'` + `isAvailableAsync()`, rendered next to the

@@ -18,6 +18,7 @@ import OnboardingPaywallTrigger from "@/components/OnboardingPaywallTrigger";
 import PaywallAnalyticsBridge from "@/components/PaywallAnalyticsBridge";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
+import { SuperwallGate } from "@/lib/superwall";
 import { initializeTikTok, tiktokIdentify, tiktokTrackAppOpen } from "@/lib/tiktok";
 import { initializeMeta, metaIdentify } from "@/lib/meta";
 import { initializePostHog, posthogIdentify, posthogReset, posthogScreen, PostHogAppProvider } from "@/lib/posthog";
@@ -496,6 +497,7 @@ export default function RootLayout() {
           <SettingsProvider>
             <UserProvider>
               <RevenueCatUserSync>
+              <SuperwallGate>
               <AnalyticsProvider>
               <NotificationProvider>
                 <AnalyticsSync />
@@ -519,6 +521,7 @@ export default function RootLayout() {
                 </AchievementProvider>
               </NotificationProvider>
               </AnalyticsProvider>
+              </SuperwallGate>
               </RevenueCatUserSync>
             </UserProvider>
           </SettingsProvider>
