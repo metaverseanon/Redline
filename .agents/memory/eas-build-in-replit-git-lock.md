@@ -18,6 +18,15 @@ instead of `rm`.
 **Working invocation** (from `artifacts/redline`):
 `EAS_NO_VCS=1 EXPO_TOKEN=$EXPO_TOKEN pnpm exec eas build --platform ios --profile production --auto-submit --non-interactive --no-wait`
 
+**Scheduling can exceed the 2-min bash timeout even with `--no-wait`.** The
+`eas build` invocation sometimes takes >2 min just to upload+schedule, so a plain
+foreground bash call returns exit -1 with no output and NOTHING gets queued. Fix:
+launch it detached so it survives the bash-tool shell exit —
+`nohup pnpm exec eas build ... &` (a plain `&` without nohup gets killed; the
+nohup log file may still vanish, that's fine). Then confirm via `eas build:list`
+that a build with the new appVersion/appBuildVersion actually appeared. Also add
+`EAS_SKIP_AUTO_FINGERPRINT=1` to skip the fingerprint hang.
+
 **Why:** the EAS server build is long (15–25 min) and the bash timeout caps at
 2 min, so `--no-wait` queues the build and returns immediately; `--auto-submit`
 still runs server-side after the build completes. Auth is via the `EXPO_TOKEN`
