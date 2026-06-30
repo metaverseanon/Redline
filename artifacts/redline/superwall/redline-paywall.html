@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>RedLine Pro — Full Throttle Access</title>
+
+  <!--
+    ============================================================================
+    RedLine Pro — Superwall paywall template
+    ----------------------------------------------------------------------------
+    A standalone, self-contained paywall web page modeled on the reference
+    layout (collage header → title → limited-offer countdown → plan cards →
+    benefits → CTA → footer) and re-skinned for RedLine (black / #CC0000 red /
+    #FFD700 gold racing aesthetic) using RedLine's real Pro features.
+
+    HOW TO USE IN SUPERWALL
+    1. Superwall dashboard → Paywalls → New Paywall → start from HTML / paste.
+    2. Attach your products to the paywall, then bind the price/period text:
+       replace the [data-sw-bind="..."] placeholder text with Superwall product
+       variables in the editor (e.g. {{ products.primary.price }},
+       {{ products.primary.weeklyPrice }}, {{ products.secondary.price }}).
+       The two plan cards are tagged:
+         • Yearly  -> data-sw-product="primary"
+         • Weekly  -> data-sw-product="secondary"
+    3. Wire the tap actions (set these in the editor on the tagged elements):
+         • [data-sw-action="purchase"]  -> Purchase selected product
+         • [data-sw-action="restore"]   -> Restore purchases
+         • [data-sw-action="close"]     -> Close / dismiss
+         • [data-sw-action="terms"]     -> open Terms URL
+         • [data-sw-action="privacy"]   -> open Privacy URL
+    4. Replace the collage tile images (--tile-N CSS vars below, or the
+       data-sw-image tiles) with your own hosted RedLine screenshots/photos.
+
+    Everything is inline (no external CSS/JS deps) so it renders inside the
+    Superwall webview. The countdown + plan selection run in vanilla JS.
+    ============================================================================
+  -->
+
+  <style>
+    :root {
+      --bg: #000000;
+      --card: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --red: #cc0000;
+      --red-bright: #ff1f1f;
+      --gold: #ffd700;
+      --text: #ffffff;
+      --muted: #8e8e93;
+      --radius: 18px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      max-width: 460px;
+      margin: 0 auto;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ---------- HERO COLLAGE ---------- */
+    .hero {
+      position: relative;
+      height: 300px;
+      overflow: hidden;
+      padding-top: var(--safe-top);
+    }
+    .collage {
+      position: absolute;
+      inset: -14% -6% 0 -6%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-auto-rows: 120px;
+      gap: 12px;
+      transform: perspective(900px) rotateX(16deg) scale(1.08);
+      transform-origin: top center;
+    }
+    .tile {
+      border-radius: 16px;
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+    /* On-brand gradient fallbacks so the template looks good with no images yet.
+       Swap each --tile-N for url('https://...') of a real RedLine photo. */
+    .tile:nth-child(1) { background-image: var(--tile-1, linear-gradient(135deg, #2a0000, #cc0000)); }
+    .tile:nth-child(2) { background-image: var(--tile-2, linear-gradient(135deg, #1a1a1a, #3a0000)); margin-top: 20px; }
+    .tile:nth-child(3) { background-image: var(--tile-3, linear-gradient(135deg, #cc0000, #ff7a00)); }
+    .tile:nth-child(4) { background-image: var(--tile-4, linear-gradient(135deg, #111, #444)); }
+    .tile:nth-child(5) { background-image: var(--tile-5, linear-gradient(160deg, #cc0000, #1a1a1a)); margin-top: 16px; }
+    .tile:nth-child(6) { background-image: var(--tile-6, linear-gradient(135deg, #ffd700, #cc7a00)); }
+    .tile::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.25));
+    }
+    .hero-fade {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 64%;
+      background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.7) 45%, #000 100%);
+      pointer-events: none;
+    }
+    .close {
+      position: absolute;
+      top: calc(var(--safe-top) + 14px);
+      left: 16px;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      font-size: 18px;
+      line-height: 34px;
+      text-align: center;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      z-index: 5;
+    }
+    .wordmark {
+      position: absolute;
+      top: calc(var(--safe-top) + 16px);
+      right: 16px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-size: 13px;
+      color: #fff;
+      z-index: 5;
+    }
+    .wordmark span { color: var(--red-bright); }
+
+    /* ---------- BODY ---------- */
+    .body {
+      flex: 1;
+      padding: 4px 22px calc(22px + var(--safe-bottom));
+      margin-top: -8px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .title {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      text-align: center;
+      margin: 0;
+    }
+    .title em { color: var(--red-bright); font-style: normal; }
+
+    .offer-label {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 14px;
+      letter-spacing: 0.3px;
+    }
+    .countdown {
+      text-align: center;
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(90deg, #fff, #ffd9d9);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* ---------- PLAN CARDS ---------- */
+    .plans { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+    .plan {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+      border: 2px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .plan[aria-selected="true"] {
+      border-color: var(--red);
+      background: rgba(204, 0, 0, 0.10);
+      box-shadow: 0 0 0 1px rgba(204,0,0,0.4), 0 8px 24px rgba(204,0,0,0.18);
+    }
+    .plan-left .plan-name { font-size: 17px; font-weight: 700; }
+    .plan-left .plan-price { font-size: 20px; font-weight: 800; margin-top: 2px; }
+    .plan-right { text-align: right; }
+    .plan-right .per { font-size: 20px; font-weight: 800; }
+    .plan-right .per-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .save-badge {
+      position: absolute;
+      top: -12px;
+      right: 16px;
+      background: linear-gradient(90deg, var(--red), #ff4d00);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(204,0,0,0.4);
+    }
+
+    /* ---------- BENEFITS ---------- */
+    .benefits-title {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+      margin: 28px 0 14px;
+    }
+    .benefits {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding: 2px 2px 6px;
+      scroll-snap-type: x mandatory;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .benefits::-webkit-scrollbar { display: none; }
+    .benefit {
+      flex: 0 0 150px;
+      scroll-snap-align: start;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px 14px;
+    }
+    .benefit .ic {
+      width: 38px; height: 38px;
+      border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      background: rgba(204, 0, 0, 0.16);
+      border: 1px solid rgba(204, 0, 0, 0.35);
+      margin-bottom: 10px;
+    }
+    .benefit h4 { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+    .benefit p { margin: 0; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+    /* ---------- CTA ---------- */
+    .cta {
+      width: 100%;
+      margin-top: 24px;
+      border: none;
+      border-radius: 999px;
+      padding: 18px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #fff;
+      cursor: pointer;
+      background: linear-gradient(90deg, #cc0000 0%, #ff3d00 55%, #ff9100 100%);
+      box-shadow: 0 10px 26px rgba(204, 0, 0, 0.45);
+    }
+    .cta:active { transform: translateY(1px); }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+    .footer a {
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .footer .dot { color: #3a3a3c; }
+
+    .legal {
+      text-align: center;
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 11px;
+      line-height: 15px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="screen">
+    <!-- HERO -->
+    <div class="hero">
+      <div class="collage">
+        <!-- Replace background with real RedLine imagery via --tile-N or data-sw-image -->
+        <div class="tile" data-sw-image="tile-1"></div>
+        <div class="tile" data-sw-image="tile-2"></div>
+        <div class="tile" data-sw-image="tile-3"></div>
+        <div class="tile" data-sw-image="tile-4"></div>
+        <div class="tile" data-sw-image="tile-5"></div>
+        <div class="tile" data-sw-image="tile-6"></div>
+      </div>
+      <div class="hero-fade"></div>
+      <button class="close" data-sw-action="close" aria-label="Close">&times;</button>
+      <div class="wordmark">RED<span>LINE</span> PRO</div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body">
+      <h1 class="title">Full <em>Throttle</em> Access</h1>
+
+      <div class="offer-label">Limited Offer</div>
+      <div class="countdown" id="countdown" data-minutes="11">-0:11:28</div>
+
+      <!-- PLAN CARDS -->
+      <div class="plans" id="plans">
+        <div class="plan" data-sw-product="primary" aria-selected="true">
+          <span class="save-badge" data-sw-bind="primary.discount">Save 80%</span>
+          <div class="plan-left">
+            <div class="plan-name">Yearly Membership</div>
+            <div class="plan-price" data-sw-bind="primary.price">$29.99</div>
+          </div>
+          <div class="plan-right">
+            <div class="per" data-sw-bind="primary.weeklyPrice">$0.57</div>
+            <div class="per-label">per week</div>
+          </div>
+        </div>
+
+        <div class="plan" data-sw-product="secondary" aria-selected="false">
+          <div class="plan-left">
+            <div class="plan-name">Monthly Membership</div>
+            <div class="plan-price" data-sw-bind="secondary.price">$4.99</div>
+          </div>
+          <div class="plan-right">
+            <div class="per" data-sw-bind="secondary.weeklyPrice">$1.15</div>
+            <div class="per-label">per week</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BENEFITS (RedLine Pro features) -->
+      <h2 class="benefits-title">Pro Benefits</h2>
+      <div class="benefits">
+        <div class="benefit">
+          <div class="ic">🧠</div>
+          <h4>AI Drive Coach</h4>
+          <p>Personalized coaching on every drive &amp; weekly trends.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">🗺️</div>
+          <h4>Territory Claiming</h4>
+          <p>Claim map zones, contest rivals, rule your area.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">👥</div>
+          <h4>Private Boards</h4>
+          <p>Friends-only leaderboards with invites &amp; alerts.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">♾️</div>
+          <h4>Unlimited Drives</h4>
+          <p>Record every trip — no limits, full history.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">🏁</div>
+          <h4>Cash Challenges</h4>
+          <p>Custom challenges with countdowns &amp; real rewards.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">🏆</div>
+          <h4>Full Leaderboards</h4>
+          <p>Global rankings &amp; advanced sort filters.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">🎵</div>
+          <h4>Drive Soundtracks</h4>
+          <p>Add music to your recaps &amp; shared posts.</p>
+        </div>
+        <div class="benefit">
+          <div class="ic">🎨</div>
+          <h4>Pro Themes</h4>
+          <p>Carbon, Neon &amp; Trackday app skins.</p>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <button class="cta" data-sw-action="purchase" id="continue">Continue</button>
+
+      <div class="footer">
+        <a data-sw-action="terms">Terms of Use</a>
+        <span class="dot">·</span>
+        <a data-sw-action="privacy">Privacy Policy</a>
+        <span class="dot">·</span>
+        <a data-sw-action="restore">Restore</a>
+      </div>
+
+      <p class="legal">
+        Auto-renews until cancelled. Cancel anytime in your Apple ID settings.
+        Payment is charged to your Apple ID at confirmation of purchase.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // --- Plan selection (visual only; Superwall handles the actual product
+    //     selection via the data-sw-product tap action you wire in the editor) ---
+    (function () {
+      var plans = document.querySelectorAll('#plans .plan');
+      plans.forEach(function (plan) {
+        plan.addEventListener('click', function () {
+          plans.forEach(function (p) { p.setAttribute('aria-selected', 'false'); });
+          plan.setAttribute('aria-selected', 'true');
+        });
+      });
+    })();
+
+    // --- Limited-offer countdown timer ---
+    (function () {
+      var el = document.getElementById('countdown');
+      if (!el) return;
+      var minutes = parseInt(el.getAttribute('data-minutes') || '11', 10);
+      var remaining = minutes * 60; // seconds
+      function pad(n) { return n < 10 ? '0' + n : '' + n; }
+      function render() {
+        var m = Math.floor(remaining / 60);
+        var s = remaining % 60;
+        // Mirrors the reference "-0:MM:SS" styling
+        el.textContent = '-0:' + pad(m) + ':' + pad(s);
+      }
+      render();
+      var timer = setInterval(function () {
+        remaining -= 1;
+        if (remaining < 0) { remaining = 0; clearInterval(timer); }
+        render();
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>
