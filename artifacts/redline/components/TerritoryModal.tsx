@@ -69,6 +69,9 @@ export default function TerritoryModal({
   const active = tab === 'global' ? globalQuery : regionQuery;
   const entries = tab === 'global' ? globalQuery.data?.entries ?? [] : regionQuery.data?.entries ?? [];
   const me = tab === 'global' ? globalQuery.data?.me : regionQuery.data?.me;
+  // Canonical King for the region (server derives this from the FULL aggregate,
+  // so it's correct even when the King sits outside the displayed slice).
+  const regionKing = regionQuery.data?.king ?? null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -112,6 +115,16 @@ export default function TerritoryModal({
               </Text>
               <ProBadge />
             </TouchableOpacity>
+          )}
+
+          {tab === 'region' && topRegionH3 && regionKing && (
+            <View style={styles.kingHeader}>
+              <Crown size={18} color={colors.accent} fill={colors.accent} />
+              <Text style={styles.kingHeaderText} numberOfLines={1}>
+                King of this area: {regionKing.name}
+                {regionKing.userId === userId ? ' (you)' : ''} · {regionKing.count} cells
+              </Text>
+            </View>
           )}
 
           <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -221,6 +234,18 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: `${colors.accent}14`,
     },
     upsellText: { flex: 1, fontSize: 12, color: colors.text },
+    kingHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      marginHorizontal: 20,
+      marginBottom: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: `${colors.accent}14`,
+    },
+    kingHeaderText: { flex: 1, fontSize: 13, fontWeight: '700' as const, color: colors.text },
     list: { paddingHorizontal: 20 },
     row: {
       flexDirection: 'row' as const,

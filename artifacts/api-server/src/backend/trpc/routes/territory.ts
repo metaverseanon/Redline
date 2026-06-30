@@ -431,27 +431,39 @@ export const territoryRouter = createTRPCRouter({
       const agg = await cachedOrFetch(`territory:region:${input.regionH3}`, 30_000, () =>
         aggregateOwners(`region_h3=eq.${encodeURIComponent(input.regionH3)}`),
       );
+      // King = the top Pro owner across the FULL region aggregate, not just the
+      // displayed slice. Determining it only within `top` would hide a valid King
+      // (or crown the wrong user) when many free users outrank the top Pro owner.
+      const proSet = await fetchProUserIds(agg.map((e) => e[0]));
+      const kingIdx = agg.findIndex((e) => proSet.has(e[0]));
+      const kingId = kingIdx >= 0 ? agg[kingIdx][0] : null;
+
       const top = agg.slice(0, input.limit);
-      const names = await fetchUserNames(top.map((e) => e[0]));
-      const proSet = await fetchProUserIds(top.map((e) => e[0]));
-      let kingAssigned = false;
-      const entries = top.map((e, i) => {
-        const isPro = proSet.has(e[0]);
-        const isKing = !kingAssigned && isPro;
-        if (isKing) kingAssigned = true;
-        return {
-          userId: e[0],
-          name: names.get(e[0]) ?? "Driver",
-          count: e[1],
-          rank: i + 1,
-          isPro,
-          isKing,
-        };
-      });
+      // Fetch names for the displayed rows plus the King (who may sit outside the slice).
+      const names = await fetchUserNames([...top.map((e) => e[0]), ...(kingId ? [kingId] : [])]);
+      const entries = top.map((e, i) => ({
+        userId: e[0],
+        name: names.get(e[0]) ?? "Driver",
+        count: e[1],
+        rank: i + 1,
+        isPro: proSet.has(e[0]),
+        isKing: e[0] === kingId,
+      }));
       const myIdx = agg.findIndex((e) => e[0] === input.userId);
       return {
         entries,
         total: agg.length,
+        // Canonical King metadata, independent of `limit` so clients never have
+        // to infer the King from the (possibly truncated) entry list.
+        king:
+          kingId !== null
+            ? {
+                userId: kingId,
+                name: names.get(kingId) ?? "Driver",
+                count: agg[kingIdx][1],
+                rank: kingIdx + 1,
+              }
+            : null,
         me: myIdx >= 0 ? { rank: myIdx + 1, count: agg[myIdx][1] } : { rank: 0, count: 0 },
       };
     }),

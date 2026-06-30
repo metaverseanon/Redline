@@ -113,8 +113,7 @@ export default function TrackScreen() {
       staleTime: 30000,
     },
   );
-  const regionEntries = regionKingQuery.data?.entries ?? [];
-  const regionKing = regionEntries.find((e) => e.isKing) ?? null;
+  const regionKing = regionKingQuery.data?.king ?? null;
   const myRegion = regionKingQuery.data?.me ?? null;
   const iAmKing = !!regionKing && regionKing.userId === user?.id;
 
