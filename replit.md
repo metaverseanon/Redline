@@ -229,7 +229,13 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
 - **Territory Claiming Game (Pro-gated social):** driving claims hexagonal H3 map
   cells as territory; users compete for regional "King of the Area" + a global
   most-territory leaderboard. H3 via `h3-js` (pure JS, bundles into both the
-  api-server esbuild bundle and the Expo Metro bundle). Resolutions:
+  api-server esbuild bundle and the Expo Metro bundle). **On the Expo client
+  `h3-js` is LAZY-loaded** (`getH3()` cached `require` inside `lib/territory.ts`,
+  guarded by try/catch) — it must NEVER be statically imported on the app boot
+  path. `h3-js` is an emscripten/asm.js module that runs heavy init at import
+  time; reaching it at boot (via `TripProvider`) crashed release Hermes on launch
+  (worked in dev/JSC). Only `cellToPolygon`/`latLngToRegion` use it (map render,
+  post-boot); `recordTerritoryForTrip` is H3-free (server does all H3). Resolutions:
   `TERRITORY_RES=9` (~174m claimable cells), `REGION_RES=6` (district/area for
   Kings). **Server-authoritative** — empty cells claim instantly; a rival-owned
   cell can only be taken by a **Pro** user whose visit count out-drives the

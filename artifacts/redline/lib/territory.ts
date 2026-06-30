@@ -1,7 +1,26 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { cellToBoundary, latLngToCell, cellToParent } from 'h3-js';
 import { trpcClient } from '@/lib/trpc';
 import type { Location as LocationType } from '@/types/trip';
+
+// h3-js is an emscripten (asm.js) module whose initialization runs at import
+// time. Importing it statically pulls that heavy init into the app's BOOT path
+// (this file is reached via TripProvider at app root), which crashes release
+// Hermes builds on launch. We therefore lazy-load it the first time a territory
+// rendering helper actually needs it — well after the app has finished booting —
+// and cache the module. If the require ever throws, we degrade gracefully (the
+// callers already return safe defaults) instead of taking the whole app down.
+type H3Module = typeof import('h3-js');
+let h3Cache: H3Module | null | undefined;
+function getH3(): H3Module | null {
+  if (h3Cache !== undefined) return h3Cache;
+  try {
+    h3Cache = require('h3-js') as H3Module;
+  } catch (err) {
+    console.error('[TERRITORY] failed to load h3-js:', err);
+    h3Cache = null;
+  }
+  return h3Cache;
+}
 
 // Mirror of the server constants (display only — the server is authoritative).
 export const FREE_CELL_CAP = 50;
@@ -43,7 +62,9 @@ export interface LatLng {
 // Convert an H3 cell index into a closed polygon ring for react-native-maps.
 export function cellToPolygon(h3: string): LatLng[] {
   try {
-    const boundary = cellToBoundary(h3); // [[lat, lng], ...]
+    const h3lib = getH3();
+    if (!h3lib) return [];
+    const boundary = h3lib.cellToBoundary(h3); // [[lat, lng], ...]
     return boundary.map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
   } catch {
     return [];
@@ -55,7 +76,9 @@ export function cellToPolygon(h3: string): LatLng[] {
 export function latLngToRegion(lat: number, lng: number): string | null {
   try {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return cellToParent(latLngToCell(lat, lng, 9), REGION_RES);
+    const h3lib = getH3();
+    if (!h3lib) return null;
+    return h3lib.cellToParent(h3lib.latLngToCell(lat, lng, 9), REGION_RES);
   } catch {
     return null;
   }
