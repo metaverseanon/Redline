@@ -37,6 +37,25 @@ unlimited + contest rivals + King eligibility.
   return empty on any non-OK response instead of throwing, so the map/cards show
   nothing rather than erroring when tables are absent.
 
+- **Contested takeovers must be DB-guarded, not snapshot-based.** Taking a rival
+  cell is a conditional `PATCH ... &owner_id=neq.me&owner_visits=lt.myVisits` (with
+  `return=representation` to detect whether a row was actually updated); only
+  uncontested writes (new claims + cells you already own) go through the batch
+  upsert. **Why:** Supabase REST has no transactions, so a stale read-then-upsert
+  lets two rivals both "win" the same cell (last-write-wins). Evaluating the
+  contest filter against the live row makes concurrent takeovers deterministic. A
+  guard miss = report `blocked`, not an error.
+
+- **Territory recording must be retried, not fire-once.** Drive-stop recording is
+  best-effort; the durable retry is in `TripProvider.syncUnsyncedTrips`, which
+  re-calls `recordTerritoryForTrip` for every ended trip that still has route
+  points (the AsyncStorage dedupe guard no-ops the already-persisted ones).
+  **Why:** an offline / transient failure at stop-time would otherwise lose that
+  trip's territory forever. **How to apply:** anything that records territory must
+  rely on `persisted:true` for its dedupe and be safe to re-invoke from the sync
+  loop (idempotent because owners are re-read every call and visit counts are
+  absolute).
+
 - **H3 resolutions:** `TERRITORY_RES=9` (~174m claimable cell), `REGION_RES=6`
   (district/area grouping for Kings). Changing these orphans all existing rows
   (cell ids are resolution-specific) — treat as a data migration, not a tweak.

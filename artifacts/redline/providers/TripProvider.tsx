@@ -1111,6 +1111,22 @@ export const [TripProvider, useTrips] = createContextHook(() => {
       if (failedCount > 0) {
         console.warn('[TRIP_SYNC] Some trips failed to sync. They will be retried on next sync cycle.');
       }
+
+      // Reliable territory retry: territory recording at drive-stop is best-effort
+      // and may not persist (offline / transient DB error). recordTerritoryForTrip
+      // only marks a trip recorded after the server confirms persistence, so any
+      // ended trip that still has route points and isn't yet recorded gets a fresh
+      // attempt here on every sync cycle (mount / reconnect) until it sticks.
+      const endedTripsWithRoute = allTrips.filter(
+        t => t.endTime && Array.isArray(t.locations) && t.locations.length > 0,
+      );
+      for (const trip of endedTripsWithRoute) {
+        try {
+          await recordTerritoryForTrip(trip.id, trip.locations);
+        } catch (e) {
+          console.error('[TERRITORY] retry record failed for trip', trip.id, e);
+        }
+      }
     } catch (error) {
       console.error('[TRIP_SYNC] Failed to sync unsynced trips:', error);
     }

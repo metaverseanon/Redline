@@ -87,6 +87,38 @@ async function upsert(
   return ok;
 }
 
+// Contested takeover of a rival-owned cell. The takeover is applied with a
+// DB-side guard (`owner_id != me` AND `owner_visits < my visits`) so the contest
+// rule — "a Pro out-driving the current owner's visit count wins the cell" — is
+// enforced ATOMICALLY at the database, not from the stale snapshot read earlier
+// in the request. Two rivals racing on the same cell with the same stale read
+// can't both win: PostgREST evaluates the filter against the live row, so only
+// the writer whose visit count still exceeds the (possibly already-updated)
+// owner_visits succeeds. Returns true only when a row was actually updated.
+async function conditionalTakeover(row: CellRow): Promise<boolean> {
+  const headers = { ...getSupabaseHeaders(), Prefer: "return=representation" };
+  const url =
+    `${getSupabaseRestUrl(TABLE_CELLS)}?h3=eq.${encodeURIComponent(row.h3)}` +
+    `&owner_id=neq.${encodeURIComponent(row.owner_id)}` +
+    `&owner_visits=lt.${row.owner_visits}`;
+  const body = {
+    owner_id: row.owner_id,
+    owner_visits: row.owner_visits,
+    region_h3: row.region_h3,
+    lat: row.lat,
+    lng: row.lng,
+    updated_at: row.updated_at,
+  };
+  const resp = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error("[TERRITORY] takeover PATCH failed", resp.status, text);
+    return false;
+  }
+  const updated = (await resp.json()) as unknown[];
+  return Array.isArray(updated) && updated.length > 0;
+}
+
 async function fetchUserNames(userIds: string[]): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   const unique = [...new Set(userIds)];
@@ -202,7 +234,11 @@ export const territoryRouter = createTRPCRouter({
       let blocked = 0;
       let capReached = false;
       const claimRows: ClaimRow[] = [];
-      const cellRows: CellRow[] = [];
+      // Uncontested writes (new claims + cells I already own) go in one batch
+      // upsert; contested rival cells are resolved individually with a DB-guarded
+      // conditional PATCH so concurrent takeovers stay deterministic.
+      const safeCellRows: CellRow[] = [];
+      const takeoverRows: CellRow[] = [];
 
       for (const h3 of cells) {
         const region = cellRegion.get(h3)!;
@@ -231,19 +267,19 @@ export const territoryRouter = createTRPCRouter({
 
         if (!cur) {
           if (isPro || ownedCount < FREE_CELL_CAP) {
-            cellRows.push(ownedRow);
+            safeCellRows.push(ownedRow);
             claimed++;
             ownedCount++;
           } else {
             capReached = true;
           }
         } else if (cur.ownerId === input.userId) {
-          cellRows.push(ownedRow);
+          safeCellRows.push(ownedRow);
           defended++;
         } else if (isPro && myVisits > cur.ownerVisits) {
-          cellRows.push(ownedRow);
-          taken++;
-          ownedCount++;
+          // Contested: resolved via guarded PATCH below; taken/blocked is decided
+          // by whether the DB guard still holds at write time, not this stale read.
+          takeoverRows.push(ownedRow);
         } else {
           // Rival-owned and we can't take it (free user, or not enough visits yet).
           blocked++;
@@ -262,10 +298,26 @@ export const territoryRouter = createTRPCRouter({
       // false WITHOUT touching claims, so a client retry recomputes the same
       // myVisits (claims unchanged) — never +2. This closes the
       // cells-fail/claims-succeed inflation path.
-      const cellsOk = cellRows.length ? await upsert(TABLE_CELLS, cellRows, "h3") : true;
+      const cellsOk = safeCellRows.length ? await upsert(TABLE_CELLS, safeCellRows, "h3") : true;
       if (!cellsOk) {
         return { ...empty, isPro, persisted: false };
       }
+
+      // Resolve contested rival cells one-by-one with a DB-guarded conditional
+      // PATCH. A guard miss (a concurrent rival already out-drove us, or we lost
+      // the race) is NOT a failure — the cell is simply reported as blocked. We
+      // re-read owners at the start of every recordTrip, so a retry re-classifies
+      // an already-won cell as a cheap defended upsert rather than a double-take.
+      for (const row of takeoverRows) {
+        const won = await conditionalTakeover(row);
+        if (won) {
+          taken++;
+          ownedCount++;
+        } else {
+          blocked++;
+        }
+      }
+
       const claimsOk = claimRows.length
         ? await upsert(TABLE_CLAIMS, claimRows, "h3,user_id", claimRows.length)
         : true;

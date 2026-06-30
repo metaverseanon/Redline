@@ -240,13 +240,22 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   (`artifacts/api-server/src/backend/trpc/routes/territory.ts`):
   `recordTrip` (mutation), `getCellsInBounds` / `getMyTerritory` /
   `getGlobalLeaderboard` / `getRegionLeaderboard` (queries). King = the **top Pro
-  owner** in a region. Writes use REST upsert (`on_conflict` +
-  `Prefer: resolution=merge-duplicates`). `recordTrip` returns a `persisted`
+  owner** in a region. Uncontested writes (new claims + cells you already own)
+  use REST upsert (`on_conflict` + `Prefer: resolution=merge-duplicates`);
+  **contested takeovers** of a rival's cell use a DB-guarded conditional `PATCH`
+  (`owner_id=neq.me & owner_visits=lt.myVisits`, `return=representation`) so two
+  rivals racing on the same cell can't both win — the contest rule is enforced
+  atomically at the DB, not from the stale snapshot read; a guard miss is reported
+  as `blocked`. `recordTrip` returns a `persisted`
   flag: when the upserts don't commit (missing tables / transient DB error) it
   returns `persisted:false` with zeroed counts and skips cache invalidation, and
   the client (`lib/territory.ts` `recordTerritoryForTrip`) only marks a trip
   recorded (AsyncStorage `territory_recorded_trips` dedupe guard) **after**
-  `persisted:true`, so a failed record is never permanently lost.
+  `persisted:true`, so a failed record is never permanently lost. Recording is
+  **retried** — `TripProvider.syncUnsyncedTrips` re-calls `recordTerritoryForTrip`
+  for every ended trip with route points on each sync cycle (mount / reconnect),
+  so an offline / failed drive-stop record is re-attempted until it persists
+  (idempotent: owners re-read each call, visit counts absolute).
   `getCellsInBounds` degrades to empty cells on any non-OK response (no hard map
   error). Leaderboards aggregate in-memory from `territory_cells`, cached via
   `cachedOrFetch` (global 60s, region 30s, my 20s). Client `lib/territory.ts`:
