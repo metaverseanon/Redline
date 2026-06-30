@@ -17,6 +17,16 @@ const MAX_POINTS_PER_TRIP = 1000;
 const RECORDED_TRIPS_KEY = 'territory_recorded_trips';
 const RECORDED_TRIPS_MAX = 200;
 
+// Durable set of trips whose territory record has been ATTEMPTED but not yet
+// confirmed persisted. The retry loop drives off THIS set (not "all ended trips"),
+// and a trip is removed the instant the server confirms persistence — so a
+// successfully-recorded trip can never be replayed (which would double-count
+// visits), even after it ages out of the rolling recent-guard above. Capped only
+// as a safety valve for the degenerate "tables never created" case where nothing
+// can ever persist.
+const PENDING_TRIPS_KEY = 'territory_pending_trips';
+const PENDING_TRIPS_MAX = 1000;
+
 export const TERRITORY_COLORS = {
   mineFill: 'rgba(34,197,94,0.22)',
   mineStroke: 'rgba(34,197,94,0.85)',
@@ -87,6 +97,54 @@ async function markRecorded(tripId: string): Promise<void> {
   }
 }
 
+async function readPending(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_TRIPS_KEY);
+    const ids = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];
+  }
+}
+
+async function addPending(tripId: string): Promise<void> {
+  try {
+    let ids = await readPending();
+    if (ids.includes(tripId)) return;
+    ids.push(tripId);
+    if (ids.length > PENDING_TRIPS_MAX) ids = ids.slice(ids.length - PENDING_TRIPS_MAX);
+    await AsyncStorage.setItem(PENDING_TRIPS_KEY, JSON.stringify(ids));
+  } catch {
+    // best-effort
+  }
+}
+
+async function clearPending(tripId: string): Promise<void> {
+  try {
+    const ids = await readPending();
+    if (!ids.includes(tripId)) return;
+    await AsyncStorage.setItem(
+      PENDING_TRIPS_KEY,
+      JSON.stringify(ids.filter((id) => id !== tripId)),
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+// Trip ids whose territory record is attempted-but-unconfirmed. The TripProvider
+// sync loop retries ONLY these (never the full trip history), so a persisted trip
+// is never replayed.
+export async function getPendingTerritoryTripIds(): Promise<string[]> {
+  return readPending();
+}
+
+// Drop a pending trip that can no longer be recorded (e.g. its route points are
+// gone), so it doesn't linger in the retry set forever.
+export async function clearPendingTerritoryTrip(tripId: string): Promise<void> {
+  await clearPending(tripId);
+}
+
 export interface TerritorySummary {
   claimed: number;
   taken: number;
@@ -110,7 +168,10 @@ export async function recordTerritoryForTrip(
 ): Promise<TerritorySummary | null> {
   try {
     if (!tripId || !Array.isArray(locations) || locations.length === 0) return null;
-    if (await alreadyRecorded(tripId)) return null;
+    if (await alreadyRecorded(tripId)) {
+      await clearPending(tripId);
+      return null;
+    }
 
     const stored = await AsyncStorage.getItem('user_profile');
     if (!stored) return null;
@@ -133,16 +194,22 @@ export async function recordTerritoryForTrip(
       .map((l) => ({ latitude: l.latitude, longitude: l.longitude }));
     if (points.length === 0) return null;
 
+    // Mark pending BEFORE the network attempt so an interrupted or failed record
+    // is durably retried — and so the retry loop only ever touches genuinely
+    // unconfirmed trips, never the full trip history.
+    await addPending(tripId);
+
     const summary = (await trpcClient.territory.recordTrip.mutate({
       userId,
       points: downsample(points, MAX_POINTS_PER_TRIP),
     })) as TerritorySummary;
 
-    // Only guard against re-recording once the server confirms it committed. If
-    // the request throws or the write didn't persist (missing tables / transient
-    // DB error), the trip stays un-recorded so it isn't permanently lost.
+    // Only clear pending / guard against re-recording once the server confirms it
+    // committed. If the request throws or the write didn't persist (missing tables
+    // / transient DB error), the trip stays pending so it isn't permanently lost.
     if (summary && summary.persisted) {
       await markRecorded(tripId);
+      await clearPending(tripId);
     }
     return summary;
   } catch (err) {

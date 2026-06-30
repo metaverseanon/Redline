@@ -1,73 +1,58 @@
 ---
 name: Territory Claiming Game
-description: Design decisions and degradation contract for the H3 territory feature (RedLine), so future changes stay consistent.
+description: Non-obvious invariants for the H3 territory feature (RedLine) so future changes don't regress correctness under Supabase-REST + no-auth constraints.
 ---
 
 # Territory Claiming Game
 
-H3-cell territory game in RedLine: driving claims hex cells; regional "King of the
-Area" (top Pro owner) + global most-territory leaderboard. Free cap 50 cells; Pro =
-unlimited + contest rivals + King eligibility.
+H3-cell territory game: driving claims hex cells; regional "King of the Area" (top
+Pro owner) + global most-territory leaderboard. Free users are capped; Pro =
+unlimited + can contest rivals + King eligibility.
 
-## Durable decisions / constraints
+## Invariants worth keeping (the non-obvious "why")
 
-- **Server is authoritative; Pro is re-verified server-side** via `fetchProUserIds`
-  (RevenueCat), never trusted from the client. Contesting a rival cell requires
-  `isPro && myVisits > owner_visits`. King = top *Pro* owner in a region.
-  **Why:** the api-server has no auth (publicProcedure + client userId), so any
-  Pro/ownership gate that matters must be enforced from RevenueCat, not the client.
+- **Anything that gates on Pro or ownership MUST be re-verified server-side.**
+  The api-server has no auth (publicProcedure + client-supplied userId), so Pro
+  status comes from RevenueCat (`fetchProUserIds`), never the client. Same rule as
+  the broader RedLine trust model — don't reintroduce client-trusted gating here.
 
-- **Two new Supabase tables require MANUAL DDL** (`territory_cells`,
-  `territory_claims`) — dev+prod share one Supabase instance, so run the DDL once;
-  prod must also be redeployed so the new tRPC router ships. Full DDL is in
-  `replit.md` (Territory section).
+- **No unconditional upsert on cell ownership — every write is DB-guarded.**
+  Supabase REST has no transactions, so a read-then-merge-upsert lets two drivers
+  both "win" a cell (last-write-wins) and breaks the contest rule. Each ownership
+  write evaluates its guard against the *live* row (new = insert-ignore-duplicates,
+  defend own = guarded on self-ownership, contest rival = guarded on
+  rival-owned + my-visits-greater) and uses `return=representation` to learn what
+  actually committed; a guard miss is reported as `blocked`, not an error.
 
-- **Persistence-truth contract (do not regress):** `recordTrip` returns a
-  `persisted` boolean. On write failure (missing tables / transient DB error) it
-  returns `persisted:false` + zeroed counts and skips cache invalidation; the
-  client `recordTerritoryForTrip` only sets its AsyncStorage dedupe guard
-  (`territory_recorded_trips`) **after** `persisted:true`.
-  **Why:** the earlier version marked the trip recorded *before* the network call
-  and logged-but-ignored upsert failures, so a transient failure permanently lost
-  that trip's territory. Any new write path must thread the same persisted signal.
-  **How to apply:** if you add another mutation that writes cells, return a
-  persisted flag and gate the client dedupe / optimistic UI on it.
+- **Free cap is enforced on cells that actually COMMIT, not optimistically.**
+  Counting intended claims before knowing which inserts landed falsely denied a
+  near-cap free user whenever an attempt lost a race. Fill up to the remaining cap
+  from committed inserts, re-attempting later candidates.
 
-- **Graceful degradation everywhere:** read queries (e.g. `getCellsInBounds`)
-  return empty on any non-OK response instead of throwing, so the map/cards show
-  nothing rather than erroring when tables are absent.
+- **Persistence-truth contract:** the record mutation returns a `persisted` flag;
+  on any write failure it returns `persisted:false` and the client does NOT set its
+  dedupe guard. The earlier version marked a trip recorded *before* the network call
+  and swallowed upsert failures, permanently losing that trip's territory on a
+  transient error. Any new cell-writing mutation must thread the same flag and the
+  client must gate its dedupe/optimistic UI on it.
 
-- **Every ownership write must be DB-guarded so a stale pre-read can never clobber
-  a concurrent writer.** There is NO unconditional upsert on `territory_cells`.
-  Three paths: new (unowned) cells = INSERT with `resolution=ignore-duplicates`
-  (a concurrent claimer keeps it); cells you already own = PATCH guarded
-  `owner_id=eq.me`; rival cells = PATCH guarded `owner_id=neq.me&owner_visits=lt.myVisits`.
-  All use `return=representation` to detect what actually committed; a guard miss =
-  `blocked` (not an error). **Why:** Supabase REST has no transactions, so any
-  read-then-merge-upsert lets two drivers both "win" a cell (last-write-wins),
-  violating the contest rule. Evaluating each guard against the live row makes
-  ownership deterministic.
+- **Territory recording is retry-until-persisted, and the retry must be driven by a
+  DURABLE pending set — not the trip history.** A trip is added to a persistent
+  pending set before the network call and removed only on `persisted:true`; the sync
+  loop retries only pending trips. An earlier version retried *all* ended trips and
+  deduped via a rolling recent-id cap, so once a user exceeded the cap old ids aged
+  out and got re-recorded — and since each record call increments visit counts by
+  +1, replays double-counted and could flip ownership. Also: the pending retry must
+  run independently of trip-sync state (a trip can sync to the backend while its
+  territory write fails), so don't gate it behind the "any unsynced trips?" check.
 
-- **Free cap is enforced on cells that COMMIT, not optimistically.** `recordTrip`
-  collects all unowned candidates, then fills up to `FREE_CELL_CAP - currentOwned`
-  from the inserts that actually land (re-attempting later candidates when some
-  lose races). **Why:** gating the cap during classification (pre-increment before
-  insert results) falsely denied a near-cap free user when an attempt lost a race.
+- **Changing the H3 resolutions is a data migration, not a tweak** — cell ids are
+  resolution-specific, so new values orphan every existing row.
 
-- **Territory recording must be retried, not fire-once.** Drive-stop recording is
-  best-effort; the durable retry is in `TripProvider.syncUnsyncedTrips`, which
-  re-calls `recordTerritoryForTrip` for every ended trip that still has route
-  points (the AsyncStorage dedupe guard no-ops the already-persisted ones).
-  **Why:** an offline / transient failure at stop-time would otherwise lose that
-  trip's territory forever. **How to apply:** anything that records territory must
-  rely on `persisted:true` for its dedupe and be safe to re-invoke from the sync
-  loop (idempotent because owners are re-read every call and visit counts are
-  absolute).
+- **Two Supabase tables need MANUAL one-time DDL** (dev+prod share one instance);
+  prod must be redeployed so the router ships. Until then the feature degrades
+  cleanly (empty everywhere, reads return empty on non-OK rather than throwing).
+  Full DDL lives in `replit.md`.
 
-- **H3 resolutions:** `TERRITORY_RES=9` (~174m claimable cell), `REGION_RES=6`
-  (district/area grouping for Kings). Changing these orphans all existing rows
-  (cell ids are resolution-specific) — treat as a data migration, not a tweak.
-
-- **Map overlay is native-only** (`Platform.OS!=='web'`); the web build relies on
-  the existing `lib/react-native-maps.web.js` Polygon stub and must never depend on
-  it for real rendering.
+- **Map overlay is native-only** — the web build relies on the existing
+  react-native-maps web Polygon stub and must never depend on it for real rendering.

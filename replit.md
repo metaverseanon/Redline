@@ -252,10 +252,19 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   the client (`lib/territory.ts` `recordTerritoryForTrip`) only marks a trip
   recorded (AsyncStorage `territory_recorded_trips` dedupe guard) **after**
   `persisted:true`, so a failed record is never permanently lost. Recording is
-  **retried** — `TripProvider.syncUnsyncedTrips` re-calls `recordTerritoryForTrip`
-  for every ended trip with route points on each sync cycle (mount / reconnect),
-  so an offline / failed drive-stop record is re-attempted until it persists
-  (idempotent: owners re-read each call, visit counts absolute).
+  **retried off a DURABLE pending set** (`territory_pending_trips` in AsyncStorage):
+  `recordTerritoryForTrip` adds the trip id to the pending set **before** the network
+  call and removes it only on `persisted:true` (exports
+  `getPendingTerritoryTripIds()` / `clearPendingTerritoryTrip()`).
+  `TripProvider.retryPendingTerritory` re-calls `recordTerritoryForTrip` for **only
+  the pending ids** on each sync cycle (mount / reconnect), dropping any pending id
+  whose trip/route is gone. It must retry **only pending** trips — never the full
+  trip history — because each `recordTrip` call increments visit counts by +1, so
+  replaying an already-persisted trip would double-count and could flip ownership
+  (the old rolling-200-id dedupe aged out for >200-trip users and caused exactly
+  that). The retry runs **independently of trip-sync state** (called before
+  `syncUnsyncedTrips`' "all synced" early return) because a trip can sync to the
+  backend while its territory write fails.
   `getCellsInBounds` degrades to empty cells on any non-OK response (no hard map
   error). Leaderboards aggregate in-memory from `territory_cells`, cached via
   `cachedOrFetch` (global 60s, region 30s, my 20s). Client `lib/territory.ts`:

@@ -19,7 +19,12 @@ import {
 } from '@/constants/speedCameras';
 import { playCameraWarningSound } from '@/lib/cameraWarningSound';
 import { trpcClient } from '@/lib/trpc';
-import { recordTerritoryForTrip, type TerritorySummary } from '@/lib/territory';
+import {
+  recordTerritoryForTrip,
+  getPendingTerritoryTripIds,
+  clearPendingTerritoryTrip,
+  type TerritorySummary,
+} from '@/lib/territory';
 import { useUser } from '@/providers/UserProvider';
 
 const TRIPS_KEY = 'trips';
@@ -1084,6 +1089,12 @@ export const [TripProvider, useTrips] = createContextHook(() => {
       const allTrips: TripStats[] = JSON.parse(stored);
       if (!Array.isArray(allTrips) || allTrips.length === 0) return;
       
+      // Reliable territory retry runs INDEPENDENTLY of trip-sync state: a trip can
+      // sync to the backend successfully while its territory write fails (offline /
+      // transient DB error), so this must not be gated behind unsynced-trip work
+      // (which early-returns when all trips are already synced).
+      await retryPendingTerritory(allTrips);
+
       const syncedIds = await getSyncedTripIds();
       const unsyncedTrips = allTrips.filter(t => !syncedIds.includes(t.id) && t.endTime);
       
@@ -1111,24 +1122,35 @@ export const [TripProvider, useTrips] = createContextHook(() => {
       if (failedCount > 0) {
         console.warn('[TRIP_SYNC] Some trips failed to sync. They will be retried on next sync cycle.');
       }
+    } catch (error) {
+      console.error('[TRIP_SYNC] Failed to sync unsynced trips:', error);
+    }
+  };
 
-      // Reliable territory retry: territory recording at drive-stop is best-effort
-      // and may not persist (offline / transient DB error). recordTerritoryForTrip
-      // only marks a trip recorded after the server confirms persistence, so any
-      // ended trip that still has route points and isn't yet recorded gets a fresh
-      // attempt here on every sync cycle (mount / reconnect) until it sticks.
-      const endedTripsWithRoute = allTrips.filter(
-        t => t.endTime && Array.isArray(t.locations) && t.locations.length > 0,
-      );
-      for (const trip of endedTripsWithRoute) {
+  // Retry territory recording for trips that are durably PENDING (attempted but
+  // not yet server-confirmed) — never the full trip history — so a trip that
+  // already persisted can't be replayed and double-count visits. A persisted trip
+  // is removed from the pending set by recordTerritoryForTrip the moment the server
+  // confirms it; a pending trip whose route is gone is dropped here.
+  const retryPendingTerritory = async (allTrips: TripStats[]) => {
+    try {
+      const pendingIds = await getPendingTerritoryTripIds();
+      if (pendingIds.length === 0) return;
+      const tripsById = new Map(allTrips.map(t => [t.id, t]));
+      for (const id of pendingIds) {
+        const trip = tripsById.get(id);
+        if (!trip || !Array.isArray(trip.locations) || trip.locations.length === 0) {
+          await clearPendingTerritoryTrip(id);
+          continue;
+        }
         try {
           await recordTerritoryForTrip(trip.id, trip.locations);
         } catch (e) {
           console.error('[TERRITORY] retry record failed for trip', trip.id, e);
         }
       }
-    } catch (error) {
-      console.error('[TRIP_SYNC] Failed to sync unsynced trips:', error);
+    } catch (e) {
+      console.error('[TERRITORY] retryPendingTerritory failed', e);
     }
   };
 
