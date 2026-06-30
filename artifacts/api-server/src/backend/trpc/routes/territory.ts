@@ -87,6 +87,83 @@ async function upsert(
   return ok;
 }
 
+// Claim brand-new (unowned) cells with an INSERT that ignores conflicts, so a
+// concurrent writer who already created the cell keeps it — we never overwrite an
+// existing owner on the "new" path (the prior unconditional merge-upsert could
+// clobber an owner set between our stale pre-read and the write). With
+// return=representation, PostgREST returns ONLY the rows actually inserted, so the
+// returned set tells us exactly which cells we won.
+//
+// `maxClaim` caps how many cells we may COMMIT (free-user cell cap; Infinity for
+// Pro). Capacity is consumed by cells that ACTUALLY commit, not optimistically:
+// we attempt candidates in order, and if some are lost to a concurrent claimer we
+// keep attempting later candidates until the cap is filled or candidates run out.
+// This prevents a free user near the cap from being falsely denied claimable cells
+// when one of their attempts loses a race. Returns the committed set, whether more
+// candidates remained when the cap filled (`capReached`), how many attempted
+// candidates were lost to races (`lost`), and `failed` on a hard write error
+// (caller then marks the trip un-persisted and retries later).
+async function insertNewCells(
+  rows: CellRow[],
+  maxClaim: number,
+): Promise<{ claimed: Set<string>; capReached: boolean; lost: number; failed: boolean }> {
+  const claimed = new Set<string>();
+  let attempted = 0;
+  if (rows.length === 0 || maxClaim <= 0) {
+    return { claimed, capReached: rows.length > 0 && maxClaim <= 0, lost: 0, failed: false };
+  }
+  const headers = {
+    ...getSupabaseHeaders(),
+    Prefer: "resolution=ignore-duplicates,return=representation",
+  };
+  let i = 0;
+  while (i < rows.length && claimed.size < maxClaim) {
+    const need = maxClaim === Infinity ? 500 : Math.min(maxClaim - claimed.size, 500);
+    const batch = rows.slice(i, i + need);
+    i += batch.length;
+    attempted += batch.length;
+    const url = `${getSupabaseRestUrl(TABLE_CELLS)}?on_conflict=h3`;
+    const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(batch) });
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error("[TERRITORY] insert new cells failed", resp.status, text);
+      return { claimed, capReached: false, lost: attempted - claimed.size, failed: true };
+    }
+    const inserted = (await resp.json()) as { h3: string }[];
+    for (const r of inserted) claimed.add(r.h3);
+  }
+  // Cap is "reached" only if we filled it AND there were still candidates we never
+  // got to (a genuine cap denial), not merely because we attempted exactly enough.
+  const capReached = claimed.size >= maxClaim && i < rows.length;
+  return { claimed, capReached, lost: attempted - claimed.size, failed: false };
+}
+
+// Re-assert ownership of a cell we already own (bump owner_visits), guarded by
+// `owner_id = me` so we NEVER clobber a rival who legitimately took the cell from
+// us between our stale pre-read and this write. Returns true only when we still
+// owned it and the row updated.
+async function conditionalDefend(row: CellRow): Promise<boolean> {
+  const headers = { ...getSupabaseHeaders(), Prefer: "return=representation" };
+  const url =
+    `${getSupabaseRestUrl(TABLE_CELLS)}?h3=eq.${encodeURIComponent(row.h3)}` +
+    `&owner_id=eq.${encodeURIComponent(row.owner_id)}`;
+  const body = {
+    owner_visits: row.owner_visits,
+    region_h3: row.region_h3,
+    lat: row.lat,
+    lng: row.lng,
+    updated_at: row.updated_at,
+  };
+  const resp = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error("[TERRITORY] defend PATCH failed", resp.status, text);
+    return false;
+  }
+  const updated = (await resp.json()) as unknown[];
+  return Array.isArray(updated) && updated.length > 0;
+}
+
 // Contested takeover of a rival-owned cell. The takeover is applied with a
 // DB-side guard (`owner_id != me` AND `owner_visits < my visits`) so the contest
 // rule — "a Pro out-driving the current owner's visit count wins the cell" — is
@@ -234,10 +311,12 @@ export const territoryRouter = createTRPCRouter({
       let blocked = 0;
       let capReached = false;
       const claimRows: ClaimRow[] = [];
-      // Uncontested writes (new claims + cells I already own) go in one batch
-      // upsert; contested rival cells are resolved individually with a DB-guarded
-      // conditional PATCH so concurrent takeovers stay deterministic.
-      const safeCellRows: CellRow[] = [];
+      // Three ownership-write paths, each guarded so a stale pre-read can never
+      // clobber a concurrent writer: new (unowned) cells INSERT-only (ignore
+      // conflicts); cells I already own re-asserted with an `owner_id=me` guard;
+      // contested rival cells taken with an `owner_visits<myVisits` guard.
+      const newCellRows: CellRow[] = [];
+      const defendRows: CellRow[] = [];
       const takeoverRows: CellRow[] = [];
 
       for (const h3 of cells) {
@@ -266,16 +345,12 @@ export const territoryRouter = createTRPCRouter({
         };
 
         if (!cur) {
-          if (isPro || ownedCount < FREE_CELL_CAP) {
-            safeCellRows.push(ownedRow);
-            claimed++;
-            ownedCount++;
-          } else {
-            capReached = true;
-          }
+          // Collect ALL unowned candidates; the free cap is enforced on cells that
+          // ACTUALLY commit in insertNewCells (not optimistically here), so a race
+          // loss never causes a false cap denial.
+          newCellRows.push(ownedRow);
         } else if (cur.ownerId === input.userId) {
-          safeCellRows.push(ownedRow);
-          defended++;
+          defendRows.push(ownedRow);
         } else if (isPro && myVisits > cur.ownerVisits) {
           // Contested: resolved via guarded PATCH below; taken/blocked is decided
           // by whether the DB guard still holds at write time, not this stale read.
@@ -298,16 +373,39 @@ export const territoryRouter = createTRPCRouter({
       // false WITHOUT touching claims, so a client retry recomputes the same
       // myVisits (claims unchanged) — never +2. This closes the
       // cells-fail/claims-succeed inflation path.
-      const cellsOk = safeCellRows.length ? await upsert(TABLE_CELLS, safeCellRows, "h3") : true;
-      if (!cellsOk) {
+      //
+      // New (unowned) cells: INSERT-only (ignore conflicts), capped at the free
+      // cell limit (Infinity for Pro). The cap is consumed by cells that ACTUALLY
+      // commit, so a race loss never causes a false cap denial. Cells lost to a
+      // concurrent claimer are reported as blocked, never overwritten. A hard write
+      // failure aborts as un-persisted so the trip is retried later.
+      const maxClaim = isPro ? Infinity : Math.max(0, FREE_CELL_CAP - ownedCount);
+      const newResult = await insertNewCells(newCellRows, maxClaim);
+      if (newResult.failed) {
         return { ...empty, isPro, persisted: false };
+      }
+      claimed = newResult.claimed.size;
+      ownedCount += claimed;
+      blocked += newResult.lost;
+      capReached = newResult.capReached;
+
+      // Cells I already own: re-assert with an `owner_id=me` guard so I never
+      // clobber a rival who legitimately took the cell from me. A guard miss means
+      // I no longer own it (rival takeover landed first) — drop it from my count.
+      for (const row of defendRows) {
+        const kept = await conditionalDefend(row);
+        if (kept) {
+          defended++;
+        } else {
+          ownedCount--;
+        }
       }
 
       // Resolve contested rival cells one-by-one with a DB-guarded conditional
       // PATCH. A guard miss (a concurrent rival already out-drove us, or we lost
       // the race) is NOT a failure — the cell is simply reported as blocked. We
       // re-read owners at the start of every recordTrip, so a retry re-classifies
-      // an already-won cell as a cheap defended upsert rather than a double-take.
+      // an already-won cell as a cheap defended write rather than a double-take.
       for (const row of takeoverRows) {
         const won = await conditionalTakeover(row);
         if (won) {
@@ -321,7 +419,7 @@ export const territoryRouter = createTRPCRouter({
       const claimsOk = claimRows.length
         ? await upsert(TABLE_CLAIMS, claimRows, "h3,user_id", claimRows.length)
         : true;
-      const persisted = cellsOk && claimsOk;
+      const persisted = claimsOk;
 
       // If the writes didn't commit (missing tables / transient DB failure), do
       // NOT report optimistic claim counts or invalidate caches — the client
