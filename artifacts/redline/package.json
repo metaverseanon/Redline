@@ -64,6 +64,7 @@
     "expo-tracking-transparency": "^55.0.14",
     "expo-updates": "~29.0.17",
     "expo-web-browser": "~15.0.10",
+    "h3-js": "^4.4.0",
     "hono": "^4.12.9",
     "lucide-react-native": "^0.562.0",
     "posthog-react-native": "^4.50.0",

@@ -31,6 +31,7 @@ import FriendsBoardsModal from '@/components/FriendsBoardsModal';
 import RankUpCelebration from '@/components/RankUpCelebration';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CommunityCard from '@/components/CommunityCard';
+import TerritoryCard from '@/components/TerritoryCard';
 import { COUNTRIES } from '@/constants/countries';
 import { CAR_BRANDS, getModelsForBrand } from '@/constants/cars';
 import { LeaderboardCategory, LeaderboardFilters, TripStats } from '@/types/trip';
@@ -2175,6 +2176,14 @@ export default function LeaderboardScreen() {
                   <ChevronRight size={16} color={colors.textInverted} />
                 </View>
               </TouchableOpacity>
+
+              <Text style={styles.friendsSectionLabel}>TERRITORY</Text>
+              <TerritoryCard
+                userId={user.id}
+                isSubscribed={isSubscribed}
+                presentPaywall={presentPaywall}
+                getLastPaywallError={getLastPaywallError}
+              />
 
               <Text style={styles.friendsSectionLabel}>YOUR COMMUNITY</Text>
               <CommunityCard

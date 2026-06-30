@@ -19,6 +19,7 @@ import {
 } from '@/constants/speedCameras';
 import { playCameraWarningSound } from '@/lib/cameraWarningSound';
 import { trpcClient } from '@/lib/trpc';
+import { recordTerritoryForTrip } from '@/lib/territory';
 import { useUser } from '@/providers/UserProvider';
 
 const TRIPS_KEY = 'trips';
@@ -1615,6 +1616,14 @@ export const [TripProvider, useTrips] = createContextHook(() => {
           }
         } catch (e) {
           console.error('[STOP_TRACKING] Background sync/geocode failed:', e);
+        }
+
+        try {
+          // Claim driven map cells as territory (server-authoritative, Pro-gated
+          // contesting). Best-effort + idempotent per trip; never blocks the trip.
+          await recordTerritoryForTrip(finalTrip.id, finalTrip.locations);
+        } catch (e) {
+          console.error('[STOP_TRACKING] Territory recording failed:', e);
         }
 
         try {

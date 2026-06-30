@@ -226,6 +226,56 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   Alert fallback), subscribed users get loading / error-retry / content states,
   and the cards hide entirely when AI is unconfigured.
 
+- **Territory Claiming Game (Pro-gated social):** driving claims hexagonal H3 map
+  cells as territory; users compete for regional "King of the Area" + a global
+  most-territory leaderboard. H3 via `h3-js` (pure JS, bundles into both the
+  api-server esbuild bundle and the Expo Metro bundle). Resolutions:
+  `TERRITORY_RES=9` (~174m claimable cells), `REGION_RES=6` (district/area for
+  Kings). **Server-authoritative** — empty cells claim instantly; a rival-owned
+  cell can only be taken by a **Pro** user whose visit count out-drives the
+  current owner's (`isPro && myVisits > owner_visits`). Free users are capped at
+  `FREE_CELL_CAP=50` owned cells; Pro is unlimited + contesting + King
+  eligibility. Pro is re-verified **server-side** via `fetchProUserIds`
+  (RevenueCat), never trusting the client. Backend router `territory`
+  (`artifacts/api-server/src/backend/trpc/routes/territory.ts`):
+  `recordTrip` (mutation), `getCellsInBounds` / `getMyTerritory` /
+  `getGlobalLeaderboard` / `getRegionLeaderboard` (queries). King = the **top Pro
+  owner** in a region. Writes use REST upsert (`on_conflict` +
+  `Prefer: resolution=merge-duplicates`). `recordTrip` returns a `persisted`
+  flag: when the upserts don't commit (missing tables / transient DB error) it
+  returns `persisted:false` with zeroed counts and skips cache invalidation, and
+  the client (`lib/territory.ts` `recordTerritoryForTrip`) only marks a trip
+  recorded (AsyncStorage `territory_recorded_trips` dedupe guard) **after**
+  `persisted:true`, so a failed record is never permanently lost.
+  `getCellsInBounds` degrades to empty cells on any non-OK response (no hard map
+  error). Leaderboards aggregate in-memory from `territory_cells`, cached via
+  `cachedOrFetch` (global 60s, region 30s, my 20s). Client `lib/territory.ts`:
+  `cellToPolygon` (h3 → RN-maps ring), `TERRITORY_COLORS`, downsample to 1000
+  pts; `recordTerritoryForTrip` is wired into `TripProvider` `stopTracking` →
+  `doBackgroundWork` (after `syncTripToBackend`). UI: `app/(tabs)/track.tsx` map
+  view has a native-only (`Platform.OS!=='web'`) Polygon overlay driven by
+  `onRegionChangeComplete` bounds + a "Territory" toggle button (off by default);
+  `components/TerritoryCard.tsx` (mounted on the leaderboard tab above
+  CommunityCard) shows my cell count / cap-remaining / King status + Pro upsell;
+  `components/TerritoryModal.tsx` shows Global + My-Area rankings with the
+  `tryPaywall`+`Alert` Pro-gating pattern and loading/error-retry/empty states.
+  **REQUIRED one-time Supabase DDL** (dev+prod share one instance, run once):
+  ```sql
+  CREATE TABLE IF NOT EXISTS territory_cells (
+    h3 text PRIMARY KEY, owner_id text NOT NULL, owner_visits int NOT NULL DEFAULT 1,
+    region_h3 text NOT NULL, lat float8 NOT NULL, lng float8 NOT NULL,
+    updated_at int8 NOT NULL);
+  CREATE INDEX IF NOT EXISTS territory_cells_owner_idx ON territory_cells(owner_id);
+  CREATE INDEX IF NOT EXISTS territory_cells_region_idx ON territory_cells(region_h3);
+  CREATE INDEX IF NOT EXISTS territory_cells_latlng_idx ON territory_cells(lat, lng);
+  CREATE TABLE IF NOT EXISTS territory_claims (
+    id text PRIMARY KEY, h3 text NOT NULL, user_id text NOT NULL, visits int NOT NULL DEFAULT 1,
+    region_h3 text NOT NULL, updated_at int8 NOT NULL, UNIQUE (h3, user_id));
+  CREATE INDEX IF NOT EXISTS territory_claims_user_idx ON territory_claims(user_id);
+  ```
+  Until the DDL is applied the feature degrades cleanly (empty everywhere, no
+  errors); prod must be redeployed so the new router ships.
+
 ### Feed reliability (Drives / Posts / Discover tabs)
 
 - Backend: `posts.getFeedPosts` (the **Posts** tab) shows **strictly** posts

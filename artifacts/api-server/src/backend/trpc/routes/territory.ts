@@ -1,0 +1,431 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { latLngToCell, cellToLatLng, cellToParent } from "h3-js";
+import { createTRPCRouter, publicProcedure } from "../create-context";
+import { isDbConfigured, getSupabaseHeaders, getSupabaseRestUrl } from "../db";
+import { cachedOrFetch, cacheInvalidatePrefix } from "../cache";
+import { fetchProUserIds } from "./subscription";
+
+// H3 resolution for individual claimable cells (~174m edge, ~0.1 km^2).
+const TERRITORY_RES = 9;
+// Coarser parent resolution used to group cells into a "region"/area for the
+// regional King leaderboard (~district sized).
+const REGION_RES = 6;
+// Free users can hold at most this many cells. Pro is unlimited.
+const FREE_CELL_CAP = 50;
+// Hard ceiling on cells processed from a single trip (defensive).
+const MAX_CELLS_PER_TRIP = 1500;
+
+const TABLE_CELLS = "territory_cells";
+const TABLE_CLAIMS = "territory_claims";
+
+interface CellRow {
+  h3: string;
+  owner_id: string;
+  owner_visits: number;
+  region_h3: string;
+  lat: number;
+  lng: number;
+  updated_at: number;
+}
+
+interface ClaimRow {
+  id: string;
+  h3: string;
+  user_id: string;
+  visits: number;
+  region_h3: string;
+  updated_at: number;
+}
+
+function ensureDb() {
+  if (!isDbConfigured()) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Database is not configured.",
+    });
+  }
+}
+
+function newId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function quoteList(ids: string[]): string {
+  return ids.map((id) => `"${id}"`).join(",");
+}
+
+// Returns true only when every batch persisted. A false result means the write
+// did NOT commit (missing table, transient DB error) so callers must not report
+// optimistic claim counts or invalidate caches as if the data changed.
+async function upsert(table: string, rows: object[], onConflict: string): Promise<boolean> {
+  const headers = {
+    ...getSupabaseHeaders(),
+    Prefer: "resolution=merge-duplicates,return=minimal",
+  };
+  let ok = true;
+  for (const batch of chunk(rows, 500)) {
+    const url = `${getSupabaseRestUrl(table)}?on_conflict=${onConflict}`;
+    const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(batch) });
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error(`[TERRITORY] upsert ${table} failed`, resp.status, text);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+async function fetchUserNames(userIds: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return result;
+  for (const batch of chunk(unique, 150)) {
+    const url = `${getSupabaseRestUrl("users")}?id=in.(${quoteList(batch)})&select=id,display_name`;
+    const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+    if (!resp.ok) continue;
+    const rows = (await resp.json()) as { id: string; display_name?: string }[];
+    for (const r of rows) result.set(r.id, r.display_name || "Driver");
+  }
+  return result;
+}
+
+// Aggregate owner -> owned-cell count, sorted desc. Pulls a bounded slice of
+// territory_cells and counts in-memory (acceptable at current scale; cached).
+async function aggregateOwners(filterParam?: string): Promise<[string, number][]> {
+  const counts = new Map<string, number>();
+  const base = `${getSupabaseRestUrl(TABLE_CELLS)}?select=owner_id${filterParam ? `&${filterParam}` : ""}&limit=200000`;
+  const resp = await fetch(base, { method: "GET", headers: getSupabaseHeaders() });
+  if (!resp.ok) return [];
+  const rows = (await resp.json()) as { owner_id: string }[];
+  for (const r of rows) {
+    if (!r.owner_id) continue;
+    counts.set(r.owner_id, (counts.get(r.owner_id) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+export const territoryRouter = createTRPCRouter({
+  // Record a finished trip's GPS points as claimed territory. Server-authoritative:
+  // empty cells are claimed instantly; rival-owned cells can only be taken over by
+  // Pro users who out-drive the current owner's visit count.
+  recordTrip: publicProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        points: z
+          .array(z.object({ latitude: z.number(), longitude: z.number() }))
+          .max(5000),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      ensureDb();
+      const now = Date.now();
+      const empty = {
+        claimed: 0,
+        taken: 0,
+        defended: 0,
+        totalOwned: 0,
+        capReached: false,
+        isPro: false,
+        cap: FREE_CELL_CAP,
+        persisted: true,
+      };
+      if (input.points.length === 0) return empty;
+
+      // Compute unique cells (+ centers + region parents) from the route.
+      const cellCenter = new Map<string, { lat: number; lng: number }>();
+      const cellRegion = new Map<string, string>();
+      for (const p of input.points) {
+        if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) continue;
+        if (Math.abs(p.latitude) > 90 || Math.abs(p.longitude) > 180) continue;
+        let cell: string;
+        try {
+          cell = latLngToCell(p.latitude, p.longitude, TERRITORY_RES);
+        } catch {
+          continue;
+        }
+        if (cellCenter.has(cell)) continue;
+        const [clat, clng] = cellToLatLng(cell);
+        cellCenter.set(cell, { lat: clat, lng: clng });
+        cellRegion.set(cell, cellToParent(cell, REGION_RES));
+        if (cellCenter.size >= MAX_CELLS_PER_TRIP) break;
+      }
+      const cells = [...cellCenter.keys()];
+      if (cells.length === 0) return { ...empty };
+
+      const isPro = (await fetchProUserIds([input.userId])).has(input.userId);
+
+      // Existing per-user claims for these cells (to grow visit counts + reuse ids).
+      const myClaims = new Map<string, { id: string; visits: number }>();
+      for (const batch of chunk(cells, 120)) {
+        const url = `${getSupabaseRestUrl(TABLE_CLAIMS)}?user_id=eq.${encodeURIComponent(input.userId)}&h3=in.(${quoteList(batch)})&select=id,h3,visits`;
+        const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+        if (!resp.ok) continue;
+        const rows = (await resp.json()) as { id: string; h3: string; visits: number }[];
+        for (const r of rows) myClaims.set(r.h3, { id: r.id, visits: r.visits });
+      }
+
+      // Current owners of these cells.
+      const owners = new Map<string, { ownerId: string; ownerVisits: number }>();
+      for (const batch of chunk(cells, 120)) {
+        const url = `${getSupabaseRestUrl(TABLE_CELLS)}?h3=in.(${quoteList(batch)})&select=h3,owner_id,owner_visits`;
+        const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+        if (!resp.ok) continue;
+        const rows = (await resp.json()) as { h3: string; owner_id: string; owner_visits: number }[];
+        for (const r of rows) owners.set(r.h3, { ownerId: r.owner_id, ownerVisits: r.owner_visits });
+      }
+
+      // Current total owned (for free cap enforcement + summary).
+      let ownedCount = 0;
+      {
+        const url = `${getSupabaseRestUrl(TABLE_CELLS)}?owner_id=eq.${encodeURIComponent(input.userId)}&select=h3&limit=100000`;
+        const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+        if (resp.ok) ownedCount = ((await resp.json()) as unknown[]).length;
+      }
+
+      let claimed = 0;
+      let taken = 0;
+      let defended = 0;
+      let capReached = false;
+      const claimRows: ClaimRow[] = [];
+      const cellRows: CellRow[] = [];
+
+      for (const h3 of cells) {
+        const region = cellRegion.get(h3)!;
+        const center = cellCenter.get(h3)!;
+        const existing = myClaims.get(h3);
+        const myVisits = (existing?.visits ?? 0) + 1;
+        claimRows.push({
+          id: existing?.id ?? newId("tclaim"),
+          h3,
+          user_id: input.userId,
+          visits: myVisits,
+          region_h3: region,
+          updated_at: now,
+        });
+
+        const cur = owners.get(h3);
+        const ownedRow: CellRow = {
+          h3,
+          owner_id: input.userId,
+          owner_visits: myVisits,
+          region_h3: region,
+          lat: center.lat,
+          lng: center.lng,
+          updated_at: now,
+        };
+
+        if (!cur) {
+          if (isPro || ownedCount < FREE_CELL_CAP) {
+            cellRows.push(ownedRow);
+            claimed++;
+            ownedCount++;
+          } else {
+            capReached = true;
+          }
+        } else if (cur.ownerId === input.userId) {
+          cellRows.push(ownedRow);
+          defended++;
+        } else if (isPro && myVisits > cur.ownerVisits) {
+          cellRows.push(ownedRow);
+          taken++;
+          ownedCount++;
+        }
+        // else: rival-owned and we can't take it (free user, or not enough visits).
+      }
+
+      const claimsOk = claimRows.length ? await upsert(TABLE_CLAIMS, claimRows, "h3,user_id") : true;
+      const cellsOk = cellRows.length ? await upsert(TABLE_CELLS, cellRows, "h3") : true;
+      const persisted = claimsOk && cellsOk;
+
+      // If the writes didn't commit (missing tables / transient DB failure), do
+      // NOT report optimistic claim counts or invalidate caches — the client
+      // keeps the trip un-recorded so it isn't permanently lost.
+      if (!persisted) {
+        return { ...empty, isPro, persisted: false };
+      }
+
+      cacheInvalidatePrefix("territory:");
+      return {
+        claimed,
+        taken,
+        defended,
+        totalOwned: ownedCount,
+        capReached,
+        isPro,
+        cap: FREE_CELL_CAP,
+        persisted: true,
+      };
+    }),
+
+  // Cells inside a lat/lng bounding box, for the map overlay.
+  getCellsInBounds: publicProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        minLat: z.number(),
+        maxLat: z.number(),
+        minLng: z.number(),
+        maxLng: z.number(),
+        limit: z.number().min(1).max(2000).default(800),
+      }),
+    )
+    .query(async ({ input }) => {
+      ensureDb();
+      const url =
+        `${getSupabaseRestUrl(TABLE_CELLS)}?lat=gte.${input.minLat}&lat=lte.${input.maxLat}` +
+        `&lng=gte.${input.minLng}&lng=lte.${input.maxLng}` +
+        `&select=h3,owner_id,owner_visits,region_h3&limit=${input.limit}`;
+      const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+      // Degrade gracefully: a missing table or transient error just means no
+      // overlay to show, not a hard map error.
+      if (!resp.ok) {
+        return { cells: [] };
+      }
+      const rows = (await resp.json()) as CellRow[];
+      const names = await fetchUserNames(rows.map((r) => r.owner_id));
+      return {
+        cells: rows.map((r) => ({
+          h3: r.h3,
+          ownerId: r.owner_id,
+          ownerName: names.get(r.owner_id) ?? "Driver",
+          visits: r.owner_visits,
+          isMine: r.owner_id === input.userId,
+        })),
+      };
+    }),
+
+  // The current user's territory totals + King status for their strongest area.
+  getMyTerritory: publicProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      ensureDb();
+      return cachedOrFetch(`territory:my:${input.userId}`, 20_000, async () => {
+        const isPro = (await fetchProUserIds([input.userId])).has(input.userId);
+
+        const url = `${getSupabaseRestUrl(TABLE_CELLS)}?owner_id=eq.${encodeURIComponent(input.userId)}&select=region_h3&limit=100000`;
+        const resp = await fetch(url, { method: "GET", headers: getSupabaseHeaders() });
+        const rows = resp.ok ? ((await resp.json()) as { region_h3: string }[]) : [];
+        const totalOwned = rows.length;
+
+        const regionCounts = new Map<string, number>();
+        for (const r of rows) regionCounts.set(r.region_h3, (regionCounts.get(r.region_h3) ?? 0) + 1);
+        const sortedRegions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1]);
+        const topRegionH3 = sortedRegions[0]?.[0] ?? null;
+
+        let topRegion: {
+          regionH3: string;
+          centerLat: number;
+          centerLng: number;
+          myCount: number;
+          myRank: number;
+          totalCells: number;
+          king: { userId: string; name: string; count: number } | null;
+          isKing: boolean;
+          iLead: boolean;
+        } | null = null;
+
+        if (topRegionH3) {
+          const sorted = await aggregateOwners(`region_h3=eq.${encodeURIComponent(topRegionH3)}`);
+          const proSet = await fetchProUserIds(sorted.map((e) => e[0]));
+          const kingEntry = sorted.find((e) => proSet.has(e[0])) ?? null;
+          const names = await fetchUserNames(
+            [kingEntry?.[0]].filter((x): x is string => !!x),
+          );
+          const myIdx = sorted.findIndex((e) => e[0] === input.userId);
+          const [clat, clng] = cellToLatLng(topRegionH3);
+          topRegion = {
+            regionH3: topRegionH3,
+            centerLat: clat,
+            centerLng: clng,
+            myCount: myIdx >= 0 ? sorted[myIdx][1] : 0,
+            myRank: myIdx >= 0 ? myIdx + 1 : 0,
+            totalCells: sorted.reduce((s, e) => s + e[1], 0),
+            king: kingEntry
+              ? { userId: kingEntry[0], name: names.get(kingEntry[0]) ?? "Driver", count: kingEntry[1] }
+              : null,
+            isKing: !!kingEntry && kingEntry[0] === input.userId,
+            iLead: sorted[0]?.[0] === input.userId,
+          };
+        }
+
+        return {
+          totalOwned,
+          isPro,
+          cap: FREE_CELL_CAP,
+          regionCount: regionCounts.size,
+          topRegion,
+        };
+      });
+    }),
+
+  // Global leaderboard ranked by total cells owned.
+  getGlobalLeaderboard: publicProcedure
+    .input(z.object({ userId: z.string().min(1), limit: z.number().min(1).max(100).default(50) }))
+    .query(async ({ input }) => {
+      ensureDb();
+      const agg = await cachedOrFetch("territory:global:agg", 60_000, () => aggregateOwners());
+      const top = agg.slice(0, input.limit);
+      const names = await fetchUserNames(top.map((e) => e[0]));
+      const proSet = await fetchProUserIds(top.map((e) => e[0]));
+      const entries = top.map((e, i) => ({
+        userId: e[0],
+        name: names.get(e[0]) ?? "Driver",
+        count: e[1],
+        rank: i + 1,
+        isPro: proSet.has(e[0]),
+      }));
+      const myIdx = agg.findIndex((e) => e[0] === input.userId);
+      return {
+        entries,
+        total: agg.length,
+        me: myIdx >= 0 ? { rank: myIdx + 1, count: agg[myIdx][1] } : { rank: 0, count: 0 },
+      };
+    }),
+
+  // Regional leaderboard (one H3 region). The top Pro owner is the King.
+  getRegionLeaderboard: publicProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        regionH3: z.string().min(1),
+        limit: z.number().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ input }) => {
+      ensureDb();
+      const agg = await cachedOrFetch(`territory:region:${input.regionH3}`, 30_000, () =>
+        aggregateOwners(`region_h3=eq.${encodeURIComponent(input.regionH3)}`),
+      );
+      const top = agg.slice(0, input.limit);
+      const names = await fetchUserNames(top.map((e) => e[0]));
+      const proSet = await fetchProUserIds(top.map((e) => e[0]));
+      let kingAssigned = false;
+      const entries = top.map((e, i) => {
+        const isPro = proSet.has(e[0]);
+        const isKing = !kingAssigned && isPro;
+        if (isKing) kingAssigned = true;
+        return {
+          userId: e[0],
+          name: names.get(e[0]) ?? "Driver",
+          count: e[1],
+          rank: i + 1,
+          isPro,
+          isKing,
+        };
+      });
+      const myIdx = agg.findIndex((e) => e[0] === input.userId);
+      return {
+        entries,
+        total: agg.length,
+        me: myIdx >= 0 ? { rank: myIdx + 1, count: agg[myIdx][1] } : { rank: 0, count: 0 },
+      };
+    }),
+});

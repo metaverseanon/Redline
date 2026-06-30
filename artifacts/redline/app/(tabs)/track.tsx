@@ -8,6 +8,9 @@ import { useTrips } from '@/providers/TripProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import { useUser } from '@/providers/UserProvider';
 import { useSubscription } from '@/lib/revenuecat';
+import { trpc } from '@/lib/trpc';
+import { keepPreviousData } from '@tanstack/react-query';
+import { cellToPolygon, TERRITORY_COLORS } from '@/lib/territory';
 import TripShareCard from '@/components/TripShareCard';
 import DriveReplayModal from '@/components/DriveReplayModal';
 import AuthGate from '@/components/AuthGate';
@@ -18,6 +21,7 @@ const FREE_TRIP_LIMIT = 3;
 let MapView: React.ComponentType<any> | null = null;
 let Polyline: React.ComponentType<any> | null = null;
 let Marker: React.ComponentType<any> | null = null;
+let Polygon: React.ComponentType<any> | null = null;
 
 if (Platform.OS !== 'web') {
   try {
@@ -25,9 +29,17 @@ if (Platform.OS !== 'web') {
     MapView = Maps.default;
     Polyline = Maps.Polyline;
     Marker = Maps.Marker;
+    Polygon = Maps.Polygon;
   } catch {
     console.log('react-native-maps not available');
   }
+}
+
+interface MapBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
 }
 
 type ViewMode = 'standard' | 'map';
@@ -65,6 +77,25 @@ export default function TrackScreen() {
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationFetched = useRef(false);
   const [showAuthGate, setShowAuthGate] = useState(false);
+  const [showTerritory, setShowTerritory] = useState(false);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
+
+  const territoryQuery = trpc.territory.getCellsInBounds.useQuery(
+    {
+      userId: user?.id ?? '',
+      minLat: mapBounds?.minLat ?? 0,
+      maxLat: mapBounds?.maxLat ?? 0,
+      minLng: mapBounds?.minLng ?? 0,
+      maxLng: mapBounds?.maxLng ?? 0,
+      limit: 800,
+    },
+    {
+      enabled: showTerritory && !!user?.id && !!mapBounds && Platform.OS !== 'web',
+      placeholderData: keepPreviousData,
+      staleTime: 15000,
+    },
+  );
+  const territoryCells = showTerritory ? territoryQuery.data?.cells ?? [] : [];
 
   const isTrackPaywallEligible = (user?.createdAt ?? 0) >= TRACK_PAYWALL_CUTOFF_MS && !isSubscribed;
   const tripsForThisAccount = user?.createdAt
@@ -460,7 +491,30 @@ export default function TrackScreen() {
           showsCompass={false}
           customMapStyle={isDark ? darkMapStyle : []}
           mapType="standard"
+          onRegionChangeComplete={(region: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => {
+            if (!showTerritory) return;
+            setMapBounds({
+              minLat: region.latitude - region.latitudeDelta / 2,
+              maxLat: region.latitude + region.latitudeDelta / 2,
+              minLng: region.longitude - region.longitudeDelta / 2,
+              maxLng: region.longitude + region.longitudeDelta / 2,
+            });
+          }}
         >
+          {showTerritory && Polygon && territoryCells.map((cell) => {
+            const coords = cellToPolygon(cell.h3);
+            if (coords.length === 0) return null;
+            return (
+              <Polygon
+                key={cell.h3}
+                coordinates={coords}
+                fillColor={cell.isMine ? TERRITORY_COLORS.mineFill : TERRITORY_COLORS.rivalFill}
+                strokeColor={cell.isMine ? TERRITORY_COLORS.mineStroke : TERRITORY_COLORS.rivalStroke}
+                strokeWidth={1}
+                tappable={false}
+              />
+            );
+          })}
           {effectiveLocation && Marker && (
             <Marker
               coordinate={{ latitude: effectiveLocation.latitude, longitude: effectiveLocation.longitude }}
@@ -474,6 +528,19 @@ export default function TrackScreen() {
             <Polyline coordinates={routeCoords} strokeColor={colors.accent} strokeWidth={3} />
           )}
         </MapView>
+
+        <TouchableOpacity
+          style={[
+            mapStyles.territoryToggle,
+            { backgroundColor: showTerritory ? 'rgba(34,197,94,0.92)' : 'rgba(0,0,0,0.6)' },
+          ]}
+          onPress={() => setShowTerritory((v) => !v)}
+          activeOpacity={0.8}
+          testID="territory-toggle"
+        >
+          <Crown size={14} color="#FFFFFF" fill={showTerritory ? '#FFFFFF' : 'transparent'} />
+          <Text style={mapStyles.territoryToggleText}>Territory</Text>
+        </TouchableOpacity>
 
         <View style={mapStyles.speedOverlay}>
           <View style={[mapStyles.miniSpeedCircle, { borderColor: speedColor }]}>
@@ -813,6 +880,23 @@ const mapStyles = StyleSheet.create({
     position: 'absolute' as const,
     bottom: 180,
     left: 20,
+  },
+  territoryToggle: {
+    position: 'absolute' as const,
+    top: 16,
+    right: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  territoryToggleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'Orbitron_600SemiBold',
+    textTransform: 'uppercase' as const,
   },
   miniSpeedCircle: {
     width: 140,
