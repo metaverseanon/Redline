@@ -64,13 +64,18 @@ function quoteList(ids: string[]): string {
 // Returns true only when every batch persisted. A false result means the write
 // did NOT commit (missing table, transient DB error) so callers must not report
 // optimistic claim counts or invalidate caches as if the data changed.
-async function upsert(table: string, rows: object[], onConflict: string): Promise<boolean> {
+async function upsert(
+  table: string,
+  rows: object[],
+  onConflict: string,
+  batchSize = 500,
+): Promise<boolean> {
   const headers = {
     ...getSupabaseHeaders(),
     Prefer: "resolution=merge-duplicates,return=minimal",
   };
   let ok = true;
-  for (const batch of chunk(rows, 500)) {
+  for (const batch of chunk(rows, batchSize)) {
     const url = `${getSupabaseRestUrl(table)}?on_conflict=${onConflict}`;
     const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(batch) });
     if (!resp.ok) {
@@ -131,6 +136,7 @@ export const territoryRouter = createTRPCRouter({
         claimed: 0,
         taken: 0,
         defended: 0,
+        blocked: 0,
         totalOwned: 0,
         capReached: false,
         isPro: false,
@@ -193,6 +199,7 @@ export const territoryRouter = createTRPCRouter({
       let claimed = 0;
       let taken = 0;
       let defended = 0;
+      let blocked = 0;
       let capReached = false;
       const claimRows: ClaimRow[] = [];
       const cellRows: CellRow[] = [];
@@ -237,13 +244,32 @@ export const territoryRouter = createTRPCRouter({
           cellRows.push(ownedRow);
           taken++;
           ownedCount++;
+        } else {
+          // Rival-owned and we can't take it (free user, or not enough visits yet).
+          blocked++;
         }
-        // else: rival-owned and we can't take it (free user, or not enough visits).
       }
 
-      const claimsOk = claimRows.length ? await upsert(TABLE_CLAIMS, claimRows, "h3,user_id") : true;
+      // Write ownership (territory_cells) FIRST, then per-user claims (the visit
+      // counter) LAST as a single atomic batch. owner_visits is set to the
+      // ABSOLUTE value derived from the claims table, so if cells commit but
+      // claims don't, a later retry recomputes the same value (idempotent set,
+      // no inflation). Claims is a single request (no chunked partial commit) so
+      // it can't half-apply and double-count visits on retry.
+      //
+      // CRITICAL ordering guarantee: claims (the +1 visit increment) is only
+      // written when cells fully committed. If cells fail we return persisted:
+      // false WITHOUT touching claims, so a client retry recomputes the same
+      // myVisits (claims unchanged) — never +2. This closes the
+      // cells-fail/claims-succeed inflation path.
       const cellsOk = cellRows.length ? await upsert(TABLE_CELLS, cellRows, "h3") : true;
-      const persisted = claimsOk && cellsOk;
+      if (!cellsOk) {
+        return { ...empty, isPro, persisted: false };
+      }
+      const claimsOk = claimRows.length
+        ? await upsert(TABLE_CLAIMS, claimRows, "h3,user_id", claimRows.length)
+        : true;
+      const persisted = cellsOk && claimsOk;
 
       // If the writes didn't commit (missing tables / transient DB failure), do
       // NOT report optimistic claim counts or invalidate caches — the client
@@ -257,6 +283,7 @@ export const territoryRouter = createTRPCRouter({
         claimed,
         taken,
         defended,
+        blocked,
         totalOwned: ownedCount,
         capReached,
         isPro,

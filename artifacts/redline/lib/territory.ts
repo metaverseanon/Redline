@@ -1,10 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { cellToBoundary } from 'h3-js';
+import { cellToBoundary, latLngToCell, cellToParent } from 'h3-js';
 import { trpcClient } from '@/lib/trpc';
 import type { Location as LocationType } from '@/types/trip';
 
 // Mirror of the server constants (display only — the server is authoritative).
 export const FREE_CELL_CAP = 50;
+
+// H3 resolution for the coarse "region"/area grouping used by King-of-the-Area.
+// Must match REGION_RES on the server.
+const REGION_RES = 6;
 
 // Max GPS points we send to the server for one trip. Cells are ~174m wide, so a
 // few hundred points already cover a long drive; this caps payload size.
@@ -33,6 +37,17 @@ export function cellToPolygon(h3: string): LatLng[] {
     return boundary.map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
   } catch {
     return [];
+  }
+}
+
+// Coarse region (H3 parent) for a lat/lng, used to look up the current area's
+// King on the drive map. Returns null if H3 can't index the point.
+export function latLngToRegion(lat: number, lng: number): string | null {
+  try {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return cellToParent(latLngToCell(lat, lng, 9), REGION_RES);
+  } catch {
+    return null;
   }
 }
 
@@ -76,6 +91,7 @@ export interface TerritorySummary {
   claimed: number;
   taken: number;
   defended: number;
+  blocked: number;
   totalOwned: number;
   capReached: boolean;
   isPro: boolean;

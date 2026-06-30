@@ -19,7 +19,7 @@ import {
 } from '@/constants/speedCameras';
 import { playCameraWarningSound } from '@/lib/cameraWarningSound';
 import { trpcClient } from '@/lib/trpc';
-import { recordTerritoryForTrip } from '@/lib/territory';
+import { recordTerritoryForTrip, type TerritorySummary } from '@/lib/territory';
 import { useUser } from '@/providers/UserProvider';
 
 const TRIPS_KEY = 'trips';
@@ -168,6 +168,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<LocationType | null>(null);
   const [lastSavedTrip, setLastSavedTrip] = useState<TripStats | null>(null);
+  const [lastTerritorySummary, setLastTerritorySummary] = useState<TerritorySummary | null>(null);
   const locationSubscription = useRef<ExpoLocation.LocationSubscription | null>(null);
   const isBackgroundEnabled = useRef<boolean>(false);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1621,7 +1622,12 @@ export const [TripProvider, useTrips] = createContextHook(() => {
         try {
           // Claim driven map cells as territory (server-authoritative, Pro-gated
           // contesting). Best-effort + idempotent per trip; never blocks the trip.
-          await recordTerritoryForTrip(finalTrip.id, finalTrip.locations);
+          // A summary (claimed/taken/blocked/capReached) is surfaced post-drive.
+          const summary = await recordTerritoryForTrip(finalTrip.id, finalTrip.locations);
+          if (summary && summary.persisted &&
+              (summary.claimed > 0 || summary.taken > 0 || summary.blocked > 0 || summary.capReached)) {
+            setLastTerritorySummary(summary);
+          }
         } catch (e) {
           console.error('[STOP_TRACKING] Territory recording failed:', e);
         }
@@ -1827,5 +1833,7 @@ export const [TripProvider, useTrips] = createContextHook(() => {
     clearLastSavedTrip,
     syncUnsyncedTrips,
     speedCameraBlocked,
+    lastTerritorySummary,
+    clearLastTerritorySummary: () => setLastTerritorySummary(null),
   };
 });

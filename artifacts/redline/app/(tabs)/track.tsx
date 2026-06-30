@@ -10,9 +10,10 @@ import { useUser } from '@/providers/UserProvider';
 import { useSubscription } from '@/lib/revenuecat';
 import { trpc } from '@/lib/trpc';
 import { keepPreviousData } from '@tanstack/react-query';
-import { cellToPolygon, TERRITORY_COLORS } from '@/lib/territory';
+import { cellToPolygon, latLngToRegion, TERRITORY_COLORS } from '@/lib/territory';
 import TripShareCard from '@/components/TripShareCard';
 import DriveReplayModal from '@/components/DriveReplayModal';
+import TerritoryResultModal from '@/components/TerritoryResultModal';
 import AuthGate from '@/components/AuthGate';
 
 const TRACK_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
@@ -65,7 +66,7 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
 }
 
 export default function TrackScreen() {
-  const { trips, isTracking, currentTrip, currentSpeed, currentLocation, startTracking, stopTracking, cancelTracking, lastSavedTrip, clearLastSavedTrip, speedCameraBlocked } = useTrips();
+  const { trips, isTracking, currentTrip, currentSpeed, currentLocation, startTracking, stopTracking, cancelTracking, lastSavedTrip, clearLastSavedTrip, speedCameraBlocked, lastTerritorySummary, clearLastTerritorySummary } = useTrips();
   const { convertSpeed, convertDistance, getSpeedLabel, getDistanceLabel, getAccelerationLabel, colors } = useSettings();
   const { user } = useUser();
   const { isSubscribed, presentPaywall, getLastPaywallError } = useSubscription();
@@ -96,6 +97,26 @@ export default function TrackScreen() {
     },
   );
   const territoryCells = showTerritory ? territoryQuery.data?.cells ?? [] : [];
+
+  // Current map-area region (H3 parent) for the "King of the Area" banner.
+  const currentRegionH3 = mapBounds
+    ? latLngToRegion(
+        (mapBounds.minLat + mapBounds.maxLat) / 2,
+        (mapBounds.minLng + mapBounds.maxLng) / 2,
+      )
+    : null;
+  const regionKingQuery = trpc.territory.getRegionLeaderboard.useQuery(
+    { userId: user?.id ?? '', regionH3: currentRegionH3 ?? '', limit: 20 },
+    {
+      enabled: showTerritory && !!user?.id && !!currentRegionH3 && Platform.OS !== 'web',
+      placeholderData: keepPreviousData,
+      staleTime: 30000,
+    },
+  );
+  const regionEntries = regionKingQuery.data?.entries ?? [];
+  const regionKing = regionEntries.find((e) => e.isKing) ?? null;
+  const myRegion = regionKingQuery.data?.me ?? null;
+  const iAmKing = !!regionKing && regionKing.userId === user?.id;
 
   const isTrackPaywallEligible = (user?.createdAt ?? 0) >= TRACK_PAYWALL_CUTOFF_MS && !isSubscribed;
   const tripsForThisAccount = user?.createdAt
@@ -542,6 +563,32 @@ export default function TrackScreen() {
           <Text style={mapStyles.territoryToggleText}>Territory</Text>
         </TouchableOpacity>
 
+        {showTerritory && currentRegionH3 && (
+          <View style={mapStyles.kingBanner} testID="king-banner">
+            <Crown size={16} color="#FFD700" fill="#FFD700" />
+            <View style={mapStyles.kingBannerTextWrap}>
+              {iAmKing ? (
+                <Text style={mapStyles.kingBannerTitle} numberOfLines={1}>
+                  You rule this area 👑
+                </Text>
+              ) : regionKing ? (
+                <Text style={mapStyles.kingBannerTitle} numberOfLines={1}>
+                  King: {regionKing.name} · {regionKing.count} cells
+                </Text>
+              ) : (
+                <Text style={mapStyles.kingBannerTitle} numberOfLines={1}>
+                  No King yet — claim this area
+                </Text>
+              )}
+              <Text style={mapStyles.kingBannerSub} numberOfLines={1}>
+                {myRegion && myRegion.rank > 0
+                  ? `You: #${myRegion.rank} · ${myRegion.count} cell${myRegion.count === 1 ? '' : 's'}`
+                  : 'You hold no cells here yet'}
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={mapStyles.speedOverlay}>
           <View style={[mapStyles.miniSpeedCircle, { borderColor: speedColor }]}>
             <Text style={mapStyles.miniSpeedValue}>{displaySpeed}</Text>
@@ -643,6 +690,15 @@ export default function TrackScreen() {
           onClose={() => setShowReplay(false)}
         />
       )}
+
+      <TerritoryResultModal
+        visible={!!lastTerritorySummary}
+        summary={lastTerritorySummary}
+        onClose={clearLastTerritorySummary}
+        isSubscribed={isSubscribed}
+        presentPaywall={presentPaywall}
+        getLastPaywallError={getLastPaywallError}
+      />
 
       <AuthGate
         visible={showAuthGate}
@@ -897,6 +953,32 @@ const mapStyles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Orbitron_600SemiBold',
     textTransform: 'uppercase' as const,
+  },
+  kingBanner: {
+    position: 'absolute' as const,
+    top: 16,
+    left: 16,
+    right: 120,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+  },
+  kingBannerTextWrap: {
+    flex: 1,
+  },
+  kingBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'Orbitron_600SemiBold',
+  },
+  kingBannerSub: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 1,
   },
   miniSpeedCircle: {
     width: 140,
