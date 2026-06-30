@@ -2670,10 +2670,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
   },
   galleryEditAddText: {
-    fontSize: 12,
+    position: 'absolute',
+    bottom: 8,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.accent,
   },

@@ -259,6 +259,7 @@ export default function NearbyFriendsScreen() {
             <TouchableOpacity
               onPress={() => friendsQuery.refetch()}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.headerRefreshBtn}
             >
               <RefreshCw size={18} color={colors.accent} />
             </TouchableOpacity>
@@ -273,6 +274,7 @@ export default function NearbyFriendsScreen() {
 function makeStyles(colors: any, isDark: boolean) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
+    headerRefreshBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
     emptyTitle: { fontSize: 16, fontFamily: 'Orbitron_700Bold', color: colors.text, textAlign: 'center' },
     emptyText: { fontSize: 13, fontFamily: 'Orbitron_400Regular', color: colors.textLight, textAlign: 'center', lineHeight: 19 },
