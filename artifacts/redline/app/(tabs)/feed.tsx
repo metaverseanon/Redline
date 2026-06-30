@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useRef } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Navigation, Clock, MapPin, Search, X, UserPlus, Car, Zap, Users, Plus, Bell, Gauge, Compass, MessageCircle, AlertCircle, RefreshCw } from 'lucide-react-native';
+import { Navigation, Clock, MapPin, Search, X, UserPlus, Car, Zap, Users, Plus, Bell, Gauge, Compass, MessageCircle, AlertCircle, RefreshCw, AtSign } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -58,6 +58,7 @@ interface PostItem {
   text?: string;
   imageUrl?: string;
   soundtrack?: Soundtrack;
+  taggedUsers?: { id: string; name: string }[];
   revCount: number;
   isRevved: boolean;
   createdAt: number;
@@ -97,6 +98,17 @@ function formatDuration(seconds: number): string {
   return `${mins}m`;
 }
 
+function interleave<T>(a: T[], b: T[]): T[] {
+  const out: T[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length) out.push(a[i++]);
+    if (j < b.length) out.push(b[j++]);
+  }
+  return out;
+}
+
 type FeedTab = 'drives' | 'posts' | 'discover';
 
 export default function FeedScreen() {
@@ -112,6 +124,23 @@ export default function FeedScreen() {
   const [commentsPostId, setCommentsPostId] = useState<string | null>(null);
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
 
+  const [discoverItems, setDiscoverItems] = useState<DiscoverItem[]>([]);
+  const [discoverExcludeIds, setDiscoverExcludeIds] = useState<string[]>([]);
+  const [discoverEndReached, setDiscoverEndReached] = useState(false);
+  const [discoverRefreshing, setDiscoverRefreshing] = useState(false);
+  const discoverSeenRef = useRef<Set<string>>(new Set());
+  const lastDrivesDataRef = useRef<unknown>(null);
+  const lastPostsDataRef = useRef<unknown>(null);
+  const prevDiscoverFetchingRef = useRef<boolean>(false);
+
+  const patchDiscoverRev = useCallback((id: string, kind: 'drive' | 'post', revved: boolean) => {
+    setDiscoverItems((prev) => prev.map((it) => {
+      if (it.kind !== kind || it.data.id !== id) return it;
+      const delta = revved ? 1 : -1;
+      return { ...it, data: { ...it.data, isRevved: revved, revCount: Math.max(0, it.data.revCount + delta) } } as DiscoverItem;
+    }));
+  }, []);
+
   const styles = useMemo(() => createStyles(colors), [colors]);
   const utils = trpc.useUtils();
 
@@ -126,13 +155,13 @@ export default function FeedScreen() {
   );
 
   const discoverDrivesQuery = trpc.social.getDiscoverDrives.useQuery(
-    { userId: user?.id || '', limit: 20 },
-    { enabled: !!user?.id && activeTab === 'discover', refetchInterval: 120000 }
+    { userId: user?.id || '', limit: 6, excludeIds: discoverExcludeIds },
+    { enabled: !!user?.id && activeTab === 'discover' }
   );
 
   const discoverPostsQuery = trpc.posts.getDiscoverPosts.useQuery(
-    { userId: user?.id || '', limit: 20 },
-    { enabled: !!user?.id && activeTab === 'discover', refetchInterval: 120000 }
+    { userId: user?.id || '', limit: 10, excludeIds: discoverExcludeIds },
+    { enabled: !!user?.id && activeTab === 'discover' }
   );
 
   const searchUsersQuery = trpc.social.searchUsers.useQuery(
@@ -187,9 +216,10 @@ export default function FeedScreen() {
       utils.posts.getDiscoverPosts.setData({ userId: user?.id || '', limit: 20 }, updatePost);
       return { prev, prevDiscover };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, vars, ctx) => {
       if (ctx?.prev) utils.posts.getFeedPosts.setData({ userId: user?.id || '', limit: 30 }, ctx.prev);
       if (ctx?.prevDiscover) utils.posts.getDiscoverPosts.setData({ userId: user?.id || '', limit: 20 }, ctx.prevDiscover);
+      patchDiscoverRev(vars.postId, 'post', false);
     },
   });
 
@@ -207,9 +237,10 @@ export default function FeedScreen() {
       utils.posts.getDiscoverPosts.setData({ userId: user?.id || '', limit: 20 }, updatePost);
       return { prev, prevDiscover };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, vars, ctx) => {
       if (ctx?.prev) utils.posts.getFeedPosts.setData({ userId: user?.id || '', limit: 30 }, ctx.prev);
       if (ctx?.prevDiscover) utils.posts.getDiscoverPosts.setData({ userId: user?.id || '', limit: 20 }, ctx.prevDiscover);
+      patchDiscoverRev(vars.postId, 'post', true);
     },
   });
 
@@ -227,9 +258,10 @@ export default function FeedScreen() {
       utils.social.getDiscoverDrives.setData({ userId: user?.id || '', limit: 20 }, updateActivity);
       return { prev, prevDiscover };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, vars, ctx) => {
       if (ctx?.prev) utils.social.getFeed.setData({ userId: user?.id || '', limit: 30 }, ctx.prev);
       if (ctx?.prevDiscover) utils.social.getDiscoverDrives.setData({ userId: user?.id || '', limit: 20 }, ctx.prevDiscover);
+      patchDiscoverRev(vars.activityId, 'drive', false);
     },
   });
 
@@ -247,9 +279,10 @@ export default function FeedScreen() {
       utils.social.getDiscoverDrives.setData({ userId: user?.id || '', limit: 20 }, updateActivity);
       return { prev, prevDiscover };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, vars, ctx) => {
       if (ctx?.prev) utils.social.getFeed.setData({ userId: user?.id || '', limit: 30 }, ctx.prev);
       if (ctx?.prevDiscover) utils.social.getDiscoverDrives.setData({ userId: user?.id || '', limit: 20 }, ctx.prevDiscover);
+      patchDiscoverRev(vars.activityId, 'drive', true);
     },
   });
 
@@ -263,6 +296,76 @@ export default function FeedScreen() {
       void discoverPostsQuery.refetch();
     }
   }, [feedQuery, postsQuery, followCountsQuery, unreadCountQuery, activeTab, discoverDrivesQuery, discoverPostsQuery]);
+
+  const discoverFetching = discoverDrivesQuery.isFetching || discoverPostsQuery.isFetching;
+
+  useEffect(() => {
+    if (activeTab !== 'discover') return;
+    if (discoverFetching) return;
+    const drivesData = discoverDrivesQuery.data;
+    const postsData = discoverPostsQuery.data;
+    if (drivesData === undefined && postsData === undefined) return;
+    if (drivesData === lastDrivesDataRef.current && postsData === lastPostsDataRef.current) return;
+    lastDrivesDataRef.current = drivesData;
+    lastPostsDataRef.current = postsData;
+
+    const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000;
+    const posts: DiscoverItem[] = (postsData ?? [])
+      .filter((p) => (p.createdAt ?? 0) >= cutoff)
+      .map((p) => ({ kind: 'post' as const, data: p }));
+    const drives: DiscoverItem[] = (drivesData ?? [])
+      .filter((d) => (d.createdAt ?? 0) >= cutoff)
+      .map((d) => ({ kind: 'drive' as const, data: d }));
+
+    const imagePosts = posts.filter((p) => p.kind === 'post' && !!p.data.imageUrl);
+    const textPosts = posts.filter((p) => p.kind === 'post' && !p.data.imageUrl);
+    const ordered: DiscoverItem[] = [...imagePosts, ...interleave(textPosts, drives)];
+    const fresh = ordered.filter((it) => !discoverSeenRef.current.has(it.data.id));
+    fresh.forEach((it) => discoverSeenRef.current.add(it.data.id));
+
+    if (fresh.length > 0) {
+      setDiscoverItems((prev) => [...prev, ...fresh]);
+    } else if (discoverExcludeIds.length > 0) {
+      setDiscoverEndReached(true);
+    }
+  }, [activeTab, discoverFetching, discoverDrivesQuery.data, discoverPostsQuery.data, discoverExcludeIds.length]);
+
+  useEffect(() => {
+    if (prevDiscoverFetchingRef.current && !discoverFetching) {
+      setDiscoverRefreshing(false);
+    }
+    prevDiscoverFetchingRef.current = discoverFetching;
+  }, [discoverFetching]);
+
+  useEffect(() => {
+    discoverSeenRef.current = new Set();
+    lastDrivesDataRef.current = null;
+    lastPostsDataRef.current = null;
+    setDiscoverItems([]);
+    setDiscoverExcludeIds([]);
+    setDiscoverEndReached(false);
+    setDiscoverRefreshing(false);
+  }, [user?.id]);
+
+  const handleDiscoverEndReached = useCallback(() => {
+    if (discoverEndReached || discoverFetching || discoverItems.length === 0) return;
+    setDiscoverExcludeIds(Array.from(discoverSeenRef.current));
+  }, [discoverEndReached, discoverFetching, discoverItems.length]);
+
+  const handleDiscoverRefresh = useCallback(() => {
+    discoverSeenRef.current = new Set();
+    lastDrivesDataRef.current = null;
+    lastPostsDataRef.current = null;
+    setDiscoverItems([]);
+    setDiscoverEndReached(false);
+    setDiscoverRefreshing(true);
+    if (discoverExcludeIds.length === 0) {
+      void discoverDrivesQuery.refetch();
+      void discoverPostsQuery.refetch();
+    } else {
+      setDiscoverExcludeIds([]);
+    }
+  }, [discoverExcludeIds.length, discoverDrivesQuery, discoverPostsQuery]);
 
   const handleUserPress = useCallback((userId: string) => {
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -295,12 +398,13 @@ export default function FeedScreen() {
       return;
     }
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    patchDiscoverRev(postId, 'post', !isRevved);
     if (isRevved) {
       unrevPostMutation.mutate({ postId, userId: user.id });
     } else {
       revPostMutation.mutate({ postId, userId: user.id });
     }
-  }, [user?.id, revPostMutation, unrevPostMutation]);
+  }, [user?.id, revPostMutation, unrevPostMutation, patchDiscoverRev]);
 
   const handleActivityRevPress = useCallback((activityId: string, isRevved: boolean) => {
     if (!user?.id) {
@@ -309,12 +413,13 @@ export default function FeedScreen() {
       return;
     }
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    patchDiscoverRev(activityId, 'drive', !isRevved);
     if (isRevved) {
       unrevActivityMutation.mutate({ activityId, userId: user.id });
     } else {
       revActivityMutation.mutate({ activityId, userId: user.id });
     }
-  }, [user?.id, revActivityMutation, unrevActivityMutation]);
+  }, [user?.id, revActivityMutation, unrevActivityMutation, patchDiscoverRev]);
 
   const handleFollowFromDiscover = useCallback((targetUserId: string) => {
     if (!user?.id) {
@@ -350,37 +455,6 @@ export default function FeedScreen() {
   const postsFeed = useMemo(() => {
     return (postsQuery.data ?? []).sort((a, b) => b.createdAt - a.createdAt);
   }, [postsQuery.data]);
-
-  const discoverFeed = useMemo((): DiscoverItem[] => {
-    const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - FIVE_DAYS_MS;
-
-    const drives: DiscoverItem[] = (discoverDrivesQuery.data ?? [])
-      .filter((d) => (d.createdAt ?? 0) >= cutoff)
-      .map((d) => ({ kind: 'drive' as const, data: d }))
-      .sort((a, b) => b.data.createdAt - a.data.createdAt);
-    const posts: DiscoverItem[] = (discoverPostsQuery.data ?? [])
-      .filter((p) => (p.createdAt ?? 0) >= cutoff)
-      .map((p) => ({ kind: 'post' as const, data: p }))
-      .sort((a, b) => b.data.createdAt - a.data.createdAt);
-
-    const seenIds = new Set<string>();
-    const combined: DiscoverItem[] = [];
-    let i = 0;
-    let j = 0;
-    let pickDrive = true;
-    while (i < drives.length || j < posts.length) {
-      const next = pickDrive
-        ? (i < drives.length ? drives[i++] : posts[j++])
-        : (j < posts.length ? posts[j++] : drives[i++]);
-      pickDrive = !pickDrive;
-      if (!seenIds.has(next.data.id)) {
-        seenIds.add(next.data.id);
-        combined.push(next);
-      }
-    }
-    return combined;
-  }, [discoverDrivesQuery.data, discoverPostsQuery.data]);
 
   const renderActivityItem = useCallback((item: FeedItem, showFollowButton?: boolean, animIndex?: number) => {
     const initial = item.userName?.[0]?.toUpperCase() || '?';
@@ -551,6 +625,20 @@ export default function FeedScreen() {
           </View>
         ) : null}
 
+        {item.taggedUsers && item.taggedUsers.length > 0 ? (
+          <View style={styles.taggedRow}>
+            <AtSign size={12} color={colors.accent} />
+            <Text style={styles.taggedLabel}>with </Text>
+            {item.taggedUsers.map((t, idx) => (
+              <TouchableOpacity key={t.id} onPress={() => handleUserPress(t.id)} activeOpacity={0.7}>
+                <Text style={styles.taggedName}>
+                  {t.name}{idx < item.taggedUsers!.length - 1 ? ', ' : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
         ) : null}
@@ -715,8 +803,7 @@ export default function FeedScreen() {
   ), [styles, colors]);
 
   const unreadCount = unreadCountQuery.data?.count ?? 0;
-  const discoverLoading = discoverDrivesQuery.isLoading || discoverPostsQuery.isLoading;
-  const discoverRefetching = discoverDrivesQuery.isRefetching || discoverPostsQuery.isRefetching;
+  const discoverInitialLoading = discoverItems.length === 0 && discoverFetching && !discoverEndReached;
 
   const tabIndicatorLeft = useMemo(() => {
     if (activeTab === 'drives') return '0%' as const;
@@ -882,32 +969,36 @@ export default function FeedScreen() {
           />
         )
       ) : (
-        discoverLoading ? (
+        discoverInitialLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.accent} />
           </View>
         ) : (
           <FlatList
-            data={discoverFeed}
+            data={discoverItems}
             renderItem={renderDiscoverItem}
             keyExtractor={(item) => `discover_${item.kind}_${item.data.id}`}
             contentContainerStyle={[
               styles.feedList,
-              discoverFeed.length === 0 && styles.feedListEmpty,
+              discoverItems.length === 0 && styles.feedListEmpty,
             ]}
             showsVerticalScrollIndicator={false}
+            onEndReached={handleDiscoverEndReached}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              discoverFetching && discoverItems.length > 0 ? (
+                <ActivityIndicator size="small" color={colors.accent} style={styles.discoverFooter} />
+              ) : null
+            }
             refreshControl={
               <RefreshControl
-                refreshing={discoverRefetching}
-                onRefresh={handleRefresh}
+                refreshing={discoverRefreshing}
+                onRefresh={handleDiscoverRefresh}
                 tintColor={colors.accent}
               />
             }
             ListEmptyComponent={(discoverDrivesQuery.isError || discoverPostsQuery.isError)
-              ? renderErrorState(() => {
-                  void discoverDrivesQuery.refetch();
-                  void discoverPostsQuery.refetch();
-                })
+              ? renderErrorState(handleDiscoverRefresh)
               : emptyDiscover}
           />
         )
@@ -1233,9 +1324,30 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
+  taggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    gap: 2,
+  },
+  taggedLabel: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_400Regular',
+    color: colors.textLight,
+  },
+  taggedName: {
+    fontSize: 12,
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.accent,
+  },
   postImage: {
     width: '100%',
     height: 280,
+  },
+  discoverFooter: {
+    paddingVertical: 20,
   },
   postSoundtrack: {
     paddingHorizontal: 14,

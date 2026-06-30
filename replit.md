@@ -300,6 +300,30 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   Until the DDL is applied the feature degrades cleanly (empty everywhere, no
   errors); prod must be redeployed so the new router ships.
 
+### Post tagging + Instagram-style Discover
+
+- **Tag people in posts:** `createPost` accepts `taggedUsers: {id,name}[]` (max 20),
+  persisted to a `posts.tagged_users` jsonb column; `parseTaggedUsers` reads it back
+  and all three post outputs (`getFeedPosts`/`getUserPosts`/`getDiscoverPosts`)
+  return `taggedUsers`. Mirrors the soundtrack graceful-degrade pattern: if the
+  column is missing, `createPost` retries the insert without `tagged_users` (+
+  soundtrack), so the feature degrades cleanly until the DDL is applied. UI:
+  `app/create-post.tsx` has a "Tag People" toolbar button → a search modal
+  (`social.searchUsers`) with removable chips; `feed.tsx` renders a tappable
+  "with NAME, …" row on post cards that routes to each tagged user's profile.
+  **REQUIRED one-time Supabase DDL** (dev+prod share one instance, run once):
+  `ALTER TABLE posts ADD COLUMN IF NOT EXISTS tagged_users jsonb;`
+- **Discover pagination (no repeats, image-weighted):** `posts.getDiscoverPosts`
+  and `social.getDiscoverDrives` both take `excludeIds: string[]` (default `[]`) and
+  a smaller `limit` (posts 10, drives 6 from the client); they filter out
+  excludeIds and `getDiscoverPosts` orders image posts first (Fisher-Yates
+  shuffled) then text posts. The client (`feed.tsx`) accumulates results into a
+  `discoverItems` state + a `discoverSeenRef` Set; `onEndReached` sets
+  `excludeIds` to the accumulated seen ids to load the next page; pull-to-refresh
+  resets the set/items; a footer spinner shows during page loads. Rev/unrev on the
+  Discover tab patches `discoverItems` directly (the old optimistic cache keys no
+  longer match the paginated query keys).
+
 ### Feed reliability (Drives / Posts / Discover tabs)
 
 - Backend: `posts.getFeedPosts` (the **Posts** tab) shows **strictly** posts

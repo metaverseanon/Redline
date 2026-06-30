@@ -16,6 +16,13 @@ const SoundtrackSchema = z.object({
 
 type Soundtrack = z.infer<typeof SoundtrackSchema>;
 
+const TaggedUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+type TaggedUser = z.infer<typeof TaggedUserSchema>;
+
 function parseSoundtrack(raw: unknown): Soundtrack | undefined {
   if (!raw) return undefined;
   let obj: unknown = raw;
@@ -30,12 +37,31 @@ function parseSoundtrack(raw: unknown): Soundtrack | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+function parseTaggedUsers(raw: unknown): TaggedUser[] | undefined {
+  if (!raw) return undefined;
+  let arr: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!Array.isArray(arr)) return undefined;
+  const parsed = arr
+    .map((item) => TaggedUserSchema.safeParse(item))
+    .filter((r): r is { success: true; data: TaggedUser } => r.success)
+    .map((r) => r.data);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 interface PostRow {
   id: string;
   user_id: string;
   text?: string;
   image_url?: string;
   soundtrack?: Soundtrack | string | null;
+  tagged_users?: TaggedUser[] | string | null;
   created_at: number;
 }
 
@@ -209,11 +235,12 @@ export const postsRouter = createTRPCRouter({
         text: z.string().optional(),
         imageUrl: z.string().optional(),
         soundtrack: SoundtrackSchema.optional(),
+        taggedUsers: z.array(TaggedUserSchema).max(20).optional(),
       })
     )
     .mutation(async ({ input }) => {
       console.log("[POSTS] Creating post for user:", input.userId);
-      console.log("[POSTS] Input text:", input.text, "imageUrl:", input.imageUrl, "soundtrack:", input.soundtrack?.trackName);
+      console.log("[POSTS] Input text:", input.text, "imageUrl:", input.imageUrl, "soundtrack:", input.soundtrack?.trackName, "tags:", input.taggedUsers?.length ?? 0);
       
       if (!isDbConfigured()) {
         console.error("[POSTS] DB not configured");
@@ -225,36 +252,39 @@ export const postsRouter = createTRPCRouter({
       }
 
       const id = `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const baseRow = {
+      const baseRow: Record<string, unknown> = {
         id,
         user_id: input.userId,
         text: input.text?.trim() || null,
         image_url: input.imageUrl || null,
         created_at: Date.now(),
       };
-      const row = input.soundtrack
-        ? { ...baseRow, soundtrack: input.soundtrack }
-        : baseRow;
+      const hasTags = !!input.taggedUsers && input.taggedUsers.length > 0;
+      // Build the richest row first; on schema errors we progressively drop the
+      // optional columns that may not exist yet (graceful degrade).
+      const row: Record<string, unknown> = { ...baseRow };
+      if (input.soundtrack) row.soundtrack = input.soundtrack;
+      if (hasTags) row.tagged_users = input.taggedUsers;
 
       console.log("[POSTS] Inserting post row:", JSON.stringify(row));
 
-      let resp = await fetch(getSupabaseRestUrl("posts"), {
-        method: "POST",
-        headers: getSupabaseHeaders(),
-        body: JSON.stringify(row),
-      });
+      const insertPost = (body: Record<string, unknown>) =>
+        fetch(getSupabaseRestUrl("posts"), {
+          method: "POST",
+          headers: getSupabaseHeaders(),
+          body: JSON.stringify(body),
+        });
 
-      if (!resp.ok && input.soundtrack) {
+      let resp = await insertPost(row);
+
+      // Retry path: if an optional column (soundtrack / tagged_users) hasn't been
+      // added to the Supabase `posts` table yet, drop the offending columns and
+      // retry so the post still saves.
+      if (!resp.ok && (input.soundtrack || hasTags)) {
         const err = await resp.text();
-        // Gracefully degrade if the `soundtrack` column hasn't been added to the
-        // Supabase `posts` table yet: retry without it so the post still saves.
-        if (/soundtrack|column|PGRST204|schema cache/i.test(err)) {
-          console.warn("[POSTS] soundtrack column missing, retrying post without it:", err);
-          resp = await fetch(getSupabaseRestUrl("posts"), {
-            method: "POST",
-            headers: getSupabaseHeaders(),
-            body: JSON.stringify(baseRow),
-          });
+        if (/soundtrack|tagged_users|column|PGRST204|schema cache/i.test(err)) {
+          console.warn("[POSTS] optional column missing, retrying post without soundtrack/tags:", err);
+          resp = await insertPost(baseRow);
         } else {
           console.error("[POSTS] Post insert failed:", resp.status, err);
           throw new Error(`Failed to create post: ${err}`);
@@ -356,6 +386,7 @@ export const postsRouter = createTRPCRouter({
           text: row.text,
           imageUrl: row.image_url,
           soundtrack: parseSoundtrack(row.soundtrack),
+          taggedUsers: parseTaggedUsers(row.tagged_users),
           revCount: revCounts[row.id] || 0,
           isRevved: userRevs.has(row.id),
           createdAt: row.created_at,
@@ -405,6 +436,7 @@ export const postsRouter = createTRPCRouter({
           text: row.text,
           imageUrl: row.image_url,
           soundtrack: parseSoundtrack(row.soundtrack),
+          taggedUsers: parseTaggedUsers(row.tagged_users),
           revCount: revCounts[row.id] || 0,
           createdAt: row.created_at,
         }));
@@ -627,11 +659,14 @@ export const postsRouter = createTRPCRouter({
     .input(
       z.object({
         userId: z.string(),
-        limit: z.number().optional().default(20),
+        limit: z.number().optional().default(10),
+        // Ids the client has already shown — excluded so the Instagram-style
+        // feed never repeats a post across paginated loads.
+        excludeIds: z.array(z.string()).optional().default([]),
       })
     )
     .query(async ({ input }) => {
-      console.log("[POSTS] Fetching discover posts for user:", input.userId);
+      console.log("[POSTS] Fetching discover posts for user:", input.userId, "exclude:", input.excludeIds.length);
       if (!isDbConfigured()) return [];
 
       try {
@@ -640,6 +675,7 @@ export const postsRouter = createTRPCRouter({
         const followRows: { following_id: string }[] = followResp.ok ? await followResp.json() : [];
         const followingIds = new Set(followRows.map((r) => r.following_id));
         followingIds.add(input.userId);
+        const excludeSet = new Set(input.excludeIds);
 
         const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
         const postsUrl = `${getSupabaseRestUrl("posts")}?order=created_at.desc&limit=200&created_at=gte.${fiveDaysAgo}`;
@@ -651,8 +687,8 @@ export const postsRouter = createTRPCRouter({
         }
 
         const allPosts: PostRow[] = await postsResp.json();
-        const discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id));
-        console.log("[POSTS] Discover posts candidates (last 5d, non-followed):", discoverPosts.length);
+        const discoverPosts = allPosts.filter((p) => !followingIds.has(p.user_id) && !excludeSet.has(p.id));
+        console.log("[POSTS] Discover posts candidates (last 5d, non-followed, unseen):", discoverPosts.length);
 
         const userCounts = new Map<string, number>();
         const uniquePosts: PostRow[] = [];
@@ -664,11 +700,18 @@ export const postsRouter = createTRPCRouter({
           }
         }
 
-        for (let i = uniquePosts.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [uniquePosts[i], uniquePosts[j]] = [uniquePosts[j], uniquePosts[i]];
-        }
-        const selected = uniquePosts.slice(0, input.limit);
+        // Favor posts that have a picture: shuffle each group independently, then
+        // place the image posts ahead of the text-only posts.
+        const shuffle = (arr: PostRow[]) => {
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+          return arr;
+        };
+        const withImage = shuffle(uniquePosts.filter((p) => !!p.image_url));
+        const withoutImage = shuffle(uniquePosts.filter((p) => !p.image_url));
+        const selected = [...withImage, ...withoutImage].slice(0, input.limit);
 
         if (selected.length === 0) {
           console.log("[POSTS] Discover posts empty after all fallbacks");
@@ -730,6 +773,7 @@ export const postsRouter = createTRPCRouter({
           text: row.text,
           imageUrl: row.image_url,
           soundtrack: parseSoundtrack(row.soundtrack),
+          taggedUsers: parseTaggedUsers(row.tagged_users),
           revCount: revCounts[row.id] || 0,
           isRevved: userRevs.has(row.id),
           createdAt: row.created_at,

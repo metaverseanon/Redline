@@ -11,10 +11,11 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
-import { ImagePlus, X, Send, ArrowLeft, Music } from 'lucide-react-native';
+import { ImagePlus, X, Send, ArrowLeft, Music, AtSign, Search, Check } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -39,9 +40,33 @@ export default function CreatePostScreen() {
   const [avatarError, setAvatarError] = useState(false);
   const [soundtrack, setSoundtrack] = useState<Soundtrack | null>(null);
   const [showTrackPicker, setShowTrackPicker] = useState(false);
+  const [taggedUsers, setTaggedUsers] = useState<{ id: string; name: string }[]>([]);
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [tagQuery, setTagQuery] = useState('');
 
   const styles = useMemo(() => createStyles(colors), [colors]);
   const utils = trpc.useUtils();
+
+  const tagSearchQuery = trpc.social.searchUsers.useQuery(
+    { query: tagQuery, currentUserId: user?.id || '' },
+    { enabled: !!user?.id && showTagPicker && tagQuery.trim().length >= 2 },
+  );
+
+  const toggleTaggedUser = useCallback((u: { id: string; name: string }) => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTaggedUsers((prev) =>
+      prev.some((t) => t.id === u.id)
+        ? prev.filter((t) => t.id !== u.id)
+        : prev.length >= 20
+          ? prev
+          : [...prev, u],
+    );
+  }, []);
+
+  const removeTaggedUser = useCallback((id: string) => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTaggedUsers((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const createPostMutation = trpc.posts.createPost.useMutation({
     onSuccess: (data) => {
@@ -155,13 +180,14 @@ export default function CreatePostScreen() {
         text: text.trim() || undefined,
         imageUrl: uploadedImageUrl,
         soundtrack: soundtrack ?? undefined,
+        taggedUsers: taggedUsers.length > 0 ? taggedUsers : undefined,
       });
     } catch (error) {
       console.error('[CREATE_POST] Submit error:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
       setIsSubmitting(false);
     }
-  }, [user?.id, text, imageUri, soundtrack, createPostMutation]);
+  }, [user?.id, text, imageUri, soundtrack, taggedUsers, createPostMutation]);
 
   const canSubmit = (text.trim().length > 0 || !!imageUri) && !isSubmitting;
 
@@ -265,6 +291,20 @@ export default function CreatePostScreen() {
             </View>
           ) : null}
 
+          {taggedUsers.length > 0 ? (
+            <View style={styles.tagChipsRow}>
+              {taggedUsers.map((u) => (
+                <View key={u.id} style={styles.tagChip}>
+                  <AtSign size={12} color={colors.accent} />
+                  <Text style={styles.tagChipText} numberOfLines={1}>{u.name}</Text>
+                  <TouchableOpacity onPress={() => removeTaggedUser(u.id)} hitSlop={8}>
+                    <X size={13} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={styles.toolbarButton}
@@ -285,6 +325,20 @@ export default function CreatePostScreen() {
               <Text style={styles.toolbarButtonText}>{soundtrack ? 'Change Song' : 'Add Song'}</Text>
               {!isSubscribed && <ProBadge size="sm" />}
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toolbarButton}
+              onPress={() => {
+                if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowTagPicker(true);
+              }}
+              activeOpacity={0.7}
+              testID="tag-people-button"
+            >
+              <AtSign size={22} color={colors.accent} />
+              <Text style={styles.toolbarButtonText}>
+                {taggedUsers.length > 0 ? `Tagged (${taggedUsers.length})` : 'Tag People'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.charCount}>{text.length}/500</Text>
@@ -296,6 +350,95 @@ export default function CreatePostScreen() {
         onClose={() => setShowTrackPicker(false)}
         onSelect={(track) => setSoundtrack(track)}
       />
+
+      <Modal
+        visible={showTagPicker}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTagPicker(false)}
+      >
+        <View style={styles.tagModalOverlay}>
+          <View style={styles.tagModalSheet}>
+            <View style={styles.tagModalHeader}>
+              <Text style={styles.tagModalTitle}>Tag People</Text>
+              <TouchableOpacity
+                onPress={() => { setShowTagPicker(false); setTagQuery(''); }}
+                style={styles.tagModalClose}
+                activeOpacity={0.7}
+              >
+                <X size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.tagSearchWrapper}>
+              <Search size={18} color={colors.textLight} />
+              <TextInput
+                style={styles.tagSearchInput}
+                placeholder="Search drivers..."
+                placeholderTextColor={colors.textLight}
+                value={tagQuery}
+                onChangeText={setTagQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                testID="tag-search-input"
+              />
+              {tagQuery.length > 0 ? (
+                <TouchableOpacity onPress={() => setTagQuery('')} hitSlop={8}>
+                  <X size={16} color={colors.textLight} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <ScrollView style={styles.tagResults} keyboardShouldPersistTaps="handled">
+              {tagQuery.trim().length < 2 ? (
+                <Text style={styles.tagHint}>Type at least 2 characters to search.</Text>
+              ) : tagSearchQuery.isLoading ? (
+                <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
+              ) : (tagSearchQuery.data ?? []).length === 0 ? (
+                <Text style={styles.tagHint}>No drivers found.</Text>
+              ) : (
+                (tagSearchQuery.data ?? []).map((u) => {
+                  const selected = taggedUsers.some((t) => t.id === u.id);
+                  const name = u.displayName?.trim() || 'Driver';
+                  return (
+                    <TouchableOpacity
+                      key={u.id}
+                      style={styles.tagResultItem}
+                      onPress={() => toggleTaggedUser({ id: u.id, name })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.tagResultAvatar}>
+                        <Text style={styles.tagResultAvatarText}>{name[0]?.toUpperCase() || '?'}</Text>
+                      </View>
+                      <View style={styles.tagResultInfo}>
+                        <Text style={styles.tagResultName} numberOfLines={1}>{name}</Text>
+                        {(u.carBrand || u.carModel) ? (
+                          <Text style={styles.tagResultCar} numberOfLines={1}>
+                            {[u.carBrand, u.carModel].filter(Boolean).join(' ')}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={[styles.tagCheck, selected && styles.tagCheckActive]}>
+                        {selected ? <Check size={14} color="#FFFFFF" /> : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.tagDoneButton}
+              onPress={() => { setShowTagPicker(false); setTagQuery(''); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.tagDoneButtonText}>
+                {taggedUsers.length > 0 ? `Done · ${taggedUsers.length} tagged` : 'Done'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -430,5 +573,151 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.textLight,
       textAlign: 'right' as const,
       marginTop: 12,
+    },
+    tagChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 16,
+    },
+    tagChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.accent + '18',
+      borderWidth: 1,
+      borderColor: colors.accent + '40',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 16,
+      maxWidth: 180,
+    },
+    tagChipText: {
+      fontSize: 12,
+      fontFamily: 'Orbitron_500Medium',
+      color: colors.accent,
+      flexShrink: 1,
+    },
+    tagModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+    },
+    tagModalSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      paddingBottom: 28,
+      maxHeight: '80%',
+      borderTopWidth: 1,
+      borderColor: colors.border,
+    },
+    tagModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+    },
+    tagModalTitle: {
+      fontSize: 18,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.text,
+    },
+    tagModalClose: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.cardLight,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    tagSearchWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.cardLight,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    tagSearchInput: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.text,
+      fontFamily: 'Orbitron_400Regular',
+      padding: 0,
+    },
+    tagResults: {
+      marginTop: 12,
+    },
+    tagHint: {
+      textAlign: 'center' as const,
+      fontSize: 13,
+      fontFamily: 'Orbitron_400Regular',
+      color: colors.textLight,
+      marginTop: 24,
+    },
+    tagResultItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 10,
+    },
+    tagResultAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.accent + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
+      overflow: 'hidden',
+    },
+    tagResultAvatarText: {
+      fontSize: 16,
+      fontFamily: 'Orbitron_700Bold',
+      color: colors.accent,
+    },
+    tagResultInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    tagResultName: {
+      fontSize: 14,
+      fontFamily: 'Orbitron_600SemiBold',
+      color: colors.text,
+    },
+    tagResultCar: {
+      fontSize: 11,
+      fontFamily: 'Orbitron_400Regular',
+      color: colors.accent,
+    },
+    tagCheck: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    tagCheckActive: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    tagDoneButton: {
+      backgroundColor: colors.accent,
+      borderRadius: 14,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 16,
+    },
+    tagDoneButtonText: {
+      fontSize: 15,
+      fontFamily: 'Orbitron_600SemiBold',
+      color: '#FFFFFF',
     },
   });

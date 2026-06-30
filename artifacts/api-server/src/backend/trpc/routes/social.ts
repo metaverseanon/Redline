@@ -823,10 +823,13 @@ export const socialRouter = createTRPCRouter({
   getDiscoverDrives: publicProcedure
     .input(z.object({
       userId: z.string(),
-      limit: z.number().optional().default(20),
+      limit: z.number().optional().default(10),
+      // Ids the client has already shown — excluded so the paginated discover
+      // feed never repeats a drive across loads.
+      excludeIds: z.array(z.string()).optional().default([]),
     }))
     .query(async ({ input }) => {
-      console.log("[SOCIAL] Fetching discover drives for user:", input.userId);
+      console.log("[SOCIAL] Fetching discover drives for user:", input.userId, "exclude:", input.excludeIds.length);
       if (!isDbConfigured()) return [];
 
       try {
@@ -835,6 +838,7 @@ export const socialRouter = createTRPCRouter({
         const followRows: { following_id: string }[] = followResp.ok ? await followResp.json() : [];
         const followingIds = new Set(followRows.map(r => r.following_id));
         followingIds.add(input.userId);
+        const excludeSet = new Set(input.excludeIds);
 
         const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
         const feedUrl = `${getSupabaseRestUrl("activity_feed")}?order=created_at.desc&limit=200&created_at=gte.${fiveDaysAgo}`;
@@ -846,8 +850,8 @@ export const socialRouter = createTRPCRouter({
         }
 
         const allRows: ActivityFeedRow[] = await feedResp.json();
-        const discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && (r.top_speed ?? 0) > 0);
-        console.log("[SOCIAL] Discover drives candidates (last 5d, non-followed):", discoverRows.length);
+        const discoverRows = allRows.filter(r => !followingIds.has(r.user_id) && !excludeSet.has(r.id) && (r.top_speed ?? 0) > 0);
+        console.log("[SOCIAL] Discover drives candidates (last 5d, non-followed, unseen):", discoverRows.length);
 
         const userCounts = new Map<string, number>();
         const uniqueRows: ActivityFeedRow[] = [];
