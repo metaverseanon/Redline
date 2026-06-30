@@ -59,9 +59,19 @@ type RegisterFn = (args: {
 }) => Promise<void>;
 
 let registerFn: RegisterFn | null = null;
-let pendingResolve: ((r: PaywallResult) => void) | null = null;
-let pendingPresented = false;
-let pendingOnPresented: (() => void) | null = null;
+
+// The single in-flight placement request. Each call to registerSuperwallPlacement
+// mints a monotonically increasing `token`; `finish`, the safety timer, and the
+// feature() grant are all scoped to that token, so a callback or timer belonging
+// to a superseded request can never settle (or mis-settle) a newer one.
+type ActiveRequest = {
+  token: number;
+  presented: boolean;
+  onPresented: (() => void) | null;
+  finish: (r: PaywallResult) => void;
+};
+let active: ActiveRequest | null = null;
+let tokenSeq = 0;
 
 function mapDismissResult(result: any): PaywallResult {
   const type = result?.type;
@@ -74,21 +84,22 @@ function mapDismissResult(result: any): PaywallResult {
 export function SuperwallBridge() {
   const { registerPlacement } = SW.usePlacement({
     onPresent: () => {
-      pendingPresented = true;
+      if (!active) return;
+      active.presented = true;
       try {
-        pendingOnPresented?.();
+        active.onPresented?.();
       } catch {}
     },
     onDismiss: (_info: any, result: any) => {
-      pendingResolve?.(mapDismissResult(result));
+      active?.finish(mapDismissResult(result));
     },
     onSkip: () => {
       // Holdout / no audience match / already subscribed: no paywall was shown.
-      pendingResolve?.("not_presented");
+      active?.finish("not_presented");
     },
     onError: (error: string) => {
       console.warn("[SW] placement error:", error);
-      pendingResolve?.("error");
+      active?.finish("error");
     },
   });
 
@@ -114,14 +125,14 @@ export async function registerSuperwallPlacement(
   if (!fn) return null;
 
   // Single paywall at a time (mirrors the RC modal's single-instance assumption).
-  if (pendingResolve) {
-    const prev = pendingResolve;
-    pendingResolve = null;
-    prev("cancelled");
+  // Settle the prior in-flight request before starting a new one.
+  if (active) {
+    const prev = active;
+    active = null;
+    prev.finish("cancelled");
   }
 
-  pendingPresented = false;
-  pendingOnPresented = opts?.onPresented ?? null;
+  const token = ++tokenSeq;
 
   return new Promise<PaywallResult>((resolve) => {
     let settled = false;
@@ -129,12 +140,20 @@ export async function registerSuperwallPlacement(
     const finish = (r: PaywallResult) => {
       if (settled) return;
       settled = true;
-      pendingResolve = null;
-      pendingOnPresented = null;
+      // Only clear `active` if it still points at THIS request — a superseding
+      // request may have already installed itself as the active one.
+      if (active && active.token === token) active = null;
       if (safetyTimer) clearTimeout(safetyTimer);
       resolve(r);
     };
-    pendingResolve = finish;
+
+    const req: ActiveRequest = {
+      token,
+      presented: false,
+      onPresented: opts?.onPresented ?? null,
+      finish,
+    };
+    active = req;
 
     // The result is settled DETERMINISTICALLY by Superwall's callbacks — never by
     // a fixed time inference (which could race a paywall that presents slightly
@@ -150,7 +169,7 @@ export async function registerSuperwallPlacement(
     // user interaction. (Pro status would still activate via RC's own customerInfo
     // listener even in that edge case.)
     safetyTimer = setTimeout(
-      () => finish(pendingPresented ? "cancelled" : "not_presented"),
+      () => finish(req.presented ? "cancelled" : "not_presented"),
       5 * 60 * 1000
     );
 
@@ -158,7 +177,7 @@ export async function registerSuperwallPlacement(
       placement,
       params: opts?.params,
       feature: () => {
-        if (!pendingPresented) finish("not_presented");
+        if (!req.presented) finish("not_presented");
       },
     }).catch((err: any) => {
       console.warn("[SW] registerPlacement threw:", err);

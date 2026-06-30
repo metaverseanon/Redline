@@ -22,6 +22,15 @@ the Superwall key so the no-key state is byte-for-byte unchanged.
   **Why:** wrong settle = user pays but app shows "cancelled". (Pro still
   activates via RC's own customerInfo listener, but the paywall flow looks broken.)
 
+- **Placement settle state is module-global, so scope every settle path to a
+  per-invocation token.** `usePlacement`'s onDismiss/onSkip/onError target the
+  CURRENT active request, so a late callback (or safety timer, or `feature()`
+  grant) from a superseded placement can resolve the WRONG promise. Mint a
+  monotonic token per `registerPlacement` call; make `finish` idempotent and only
+  null out `active` when it still points at that token; gate the timer and
+  feature() on the request object. Superseding a pending request must explicitly
+  settle it (cancelled) before installing the new one.
+
 - **`registerSuperwallPlacement` returns `PaywallResult | null`; null === "bridge
   not mounted, fall back to the RC modal".** A configured-but-failing Superwall
   returns `"error"` (NOT null), so it does NOT fall back. This is why a
