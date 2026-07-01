@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trophy, Zap, Navigation, Gauge, ChevronDown, X, MapPin, Car, Filter, Activity, Route, Search, Clock, Calendar, CornerDownRight, ChevronRight, Timer, Users, Send, Bell, Check, XCircle, Share2, Navigation2, MessageCircle, AlertCircle, UserPlus, UserCheck, Lock, Crown } from 'lucide-react-native';
 
 const LEADERBOARD_PAYWALL_CUTOFF_MS = Date.UTC(2026, 4, 9);
+const FRIENDS_MAP_OPENS_KEY = '@redline:nearbyFriendsOpens';
+const FRIENDS_MAP_FREE_OPENS = 3;
 import * as Location from 'expo-location';
 import type { DriveMeetup } from '@/types/meetup';
 import * as Haptics from 'expo-haptics';
@@ -907,6 +909,46 @@ export default function LeaderboardScreen() {
     }
   }, [presentPaywall, getLastPaywallError]);
 
+  const handleOpenFriendsMap = useCallback(async () => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    const open = () => router.push('/nearby-friends' as any);
+
+    if (isSubscribed) {
+      open();
+      return;
+    }
+
+    try {
+      const raw = await AsyncStorage.getItem(FRIENDS_MAP_OPENS_KEY);
+      const opens = raw ? parseInt(raw, 10) || 0 : 0;
+
+      if (opens < FRIENDS_MAP_FREE_OPENS) {
+        await AsyncStorage.setItem(FRIENDS_MAP_OPENS_KEY, String(opens + 1));
+        open();
+        return;
+      }
+
+      // Free opens exhausted -> present paywall.
+      const result = await presentPaywall('nearby_friends_locked');
+      if (result === 'purchased' || result === 'restored') {
+        open();
+        return;
+      }
+      if (result === 'not_presented' || result === 'error') {
+        // Paywall infra unavailable (web / Expo Go / config) -> fail open so a
+        // paywall glitch never hard-locks the feature.
+        open();
+        return;
+      }
+      // result === 'cancelled': user saw the paywall and declined; stay gated.
+    } catch {
+      // AsyncStorage failure should never block the feature.
+      open();
+    }
+  }, [isSubscribed, presentPaywall]);
+
   const leaderboardTripsQuery = trpc.trips.getLeaderboardTrips.useQuery(
     {
       category: activeCategory === 'challengesCompleted' ? 'topSpeed' : activeCategory,
@@ -1524,12 +1566,7 @@ export default function LeaderboardScreen() {
         <Text style={styles.navTitle}>Leaderboard</Text>
         <TouchableOpacity
           style={styles.friendsMapBtn}
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            router.push('/nearby-friends' as any);
-          }}
+          onPress={handleOpenFriendsMap}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >

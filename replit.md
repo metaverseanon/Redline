@@ -300,6 +300,44 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   Until the DDL is applied the feature degrades cleanly (empty everywhere, no
   errors); prod must be redeployed so the new router ships.
 
+### Nearby Friends map — proximity push + free-open paywall gate
+
+- **"Friend nearby" push (server-side, fire-and-forget):** `updateUserLocation`
+  (`artifacts/api-server/src/backend/trpc/routes/user.ts`) calls
+  `notifyNearbyFriends(moverId, lat, lng)` **only when the location write
+  persisted** (`void`, never throws, never blocks the mutation). It notifies the
+  people who **follow the mover** (`follows.following_id = moverId` → they see the
+  mover on their own friends map) who have a `push_token` + a location fresh within
+  2h and are within **25km** (`NEARBY_PUSH_RADIUS_KM`). Gated on the mover having
+  `location_sharing_enabled = true` (don't broadcast if they hid themselves).
+  Deduped **3h per (mover, recipient) pair** (`NEARBY_PUSH_COOLDOWN_MS`) via a
+  `nearby_ping_cooldown` table: cooldown is **upserted before** the Expo push send
+  (`on_conflict=mover_id,recipient_id`, `Prefer: resolution=merge-duplicates`), and
+  the whole thing is **fail-closed** — if the cooldown read/upsert errors (e.g.
+  table missing) it skips sending so a missing table can never spam. Push is sent
+  via a local inline Expo POST (`sendNearbyPush`); tapping carries
+  `data.type = "friend_nearby"`. **REQUIRED one-time Supabase DDL** (dev+prod share
+  one instance, run once):
+  ```sql
+  CREATE TABLE IF NOT EXISTS nearby_ping_cooldown (
+    mover_id text NOT NULL, recipient_id text NOT NULL, notified_at int8 NOT NULL,
+    PRIMARY KEY (mover_id, recipient_id));
+  ```
+  Until the DDL is applied the feature degrades cleanly (no pushes, no errors); prod
+  must be redeployed so the new code ships. Note: like every route here it's a
+  `publicProcedure` with a client-asserted `userId` (the app's documented no-auth
+  trust model), so a spoofed `userId` could trigger pushes to that user's
+  followers — bounded by the 3h cooldown + 25km + fresh-location filters.
+- **Free-open paywall gate (client):** the "Friends Map" button on
+  `app/(tabs)/leaderboard.tsx` routes through `handleOpenFriendsMap`. Pro users
+  (`useSubscription().isSubscribed`) always open. Free users get
+  `FRIENDS_MAP_FREE_OPENS = 3` opens tracked in AsyncStorage
+  (`@redline:nearbyFriendsOpens`), then hit `presentPaywall('nearby_friends_locked')`.
+  It **fails open** on `not_presented`/`error` (web / Expo Go / unconfigured paywall
+  so a glitch never hard-locks the feature) and on any AsyncStorage error; it stays
+  gated only on an explicit `cancelled`. The counter only increments for free users
+  and is never reset, so it's a lifetime free-open allowance.
+
 ### Post tagging + Instagram-style Discover
 
 - **Tag people in posts:** `createPost` accepts `taggedUsers: {id,name}[]` (max 20),

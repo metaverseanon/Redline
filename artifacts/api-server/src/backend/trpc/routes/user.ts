@@ -79,6 +79,122 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+const NEARBY_PUSH_RADIUS_KM = 25;
+const NEARBY_PUSH_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3h per (mover, recipient) pair
+const NEARBY_PUSH_RECIPIENT_MAX_AGE_MS = 2 * 60 * 60 * 1000; // recipient location must be fresh
+
+async function sendNearbyPush(to: string, title: string, body: string, data: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to, title, body, sound: "default", channelId: "default", priority: "high", data }),
+    });
+  } catch (e) {
+    console.error("[NEARBY_PUSH] send failed:", e);
+  }
+}
+
+// Fire-and-forget: when a user's location updates, notify the followers who have
+// them on their friends map that they're now driving nearby. Never throws.
+// Cooldown state lives in the `nearby_ping_cooldown` table; if that table is
+// missing the read fails and we skip sending (fail-closed) so we never spam.
+async function notifyNearbyFriends(moverId: string, moverLat: number, moverLng: number): Promise<void> {
+  try {
+    if (!isDbConfigured()) return;
+
+    // 1) Mover must be sharing location to broadcast presence.
+    const moverUrl = `${getSupabaseRestUrl("users")}?id=eq.${encodeURIComponent(moverId)}&select=display_name,location_sharing_enabled&limit=1`;
+    const moverResp = await fetch(moverUrl, { method: "GET", headers: getSupabaseHeaders() });
+    if (!moverResp.ok) return;
+    const moverRows = (await moverResp.json()) as { display_name: string | null; location_sharing_enabled: boolean | null }[];
+    const mover = moverRows[0];
+    if (!mover || mover.location_sharing_enabled !== true) return;
+    const moverName = mover.display_name || "A friend";
+
+    // 2) Who follows the mover? (they see the mover on their friends map)
+    const followUrl = `${getSupabaseRestUrl("follows")}?following_id=eq.${encodeURIComponent(moverId)}&select=follower_id`;
+    const followResp = await fetch(followUrl, { method: "GET", headers: getSupabaseHeaders() });
+    if (!followResp.ok) return;
+    const followerIds = ((await followResp.json()) as { follower_id: string }[])
+      .map(r => r.follower_id)
+      .filter(Boolean);
+    if (followerIds.length === 0) return;
+
+    // 3) Of those followers, who has a push token + a fresh location?
+    const inList = followerIds.map(id => `"${id}"`).join(",");
+    const usersUrl =
+      `${getSupabaseRestUrl("users")}?id=in.(${inList})` +
+      `&push_token=not.is.null&latitude=not.is.null&longitude=not.is.null&location_updated_at=not.is.null` +
+      `&select=id,push_token,latitude,longitude,location_updated_at`;
+    const usersResp = await fetch(usersUrl, { method: "GET", headers: getSupabaseHeaders() });
+    if (!usersResp.ok) return;
+    const now = Date.now();
+    const candidates = ((await usersResp.json()) as {
+      id: string;
+      push_token: string;
+      latitude: number;
+      longitude: number;
+      location_updated_at: number;
+    }[])
+      .filter(r => r.id !== moverId && r.push_token && r.latitude != null && r.longitude != null)
+      .filter(r => now - Number(r.location_updated_at) <= NEARBY_PUSH_RECIPIENT_MAX_AGE_MS)
+      .map(r => ({ ...r, distanceKm: haversineDistance(moverLat, moverLng, r.latitude, r.longitude) }))
+      .filter(r => r.distanceKm <= NEARBY_PUSH_RADIUS_KM);
+    if (candidates.length === 0) return;
+
+    // 4) Cooldown filter — fail-closed if the cooldown table is unavailable.
+    const recipIn = candidates.map(c => `"${c.id}"`).join(",");
+    const cooldownUrl =
+      `${getSupabaseRestUrl("nearby_ping_cooldown")}?mover_id=eq.${encodeURIComponent(moverId)}` +
+      `&recipient_id=in.(${recipIn})&select=recipient_id,notified_at`;
+    const cooldownResp = await fetch(cooldownUrl, { method: "GET", headers: getSupabaseHeaders() });
+    if (!cooldownResp.ok) {
+      console.log("[NEARBY_PUSH] cooldown table unavailable, skipping (fail-closed)");
+      return;
+    }
+    const lastNotified = new Map<string, number>();
+    for (const row of (await cooldownResp.json()) as { recipient_id: string; notified_at: number }[]) {
+      lastNotified.set(row.recipient_id, Number(row.notified_at));
+    }
+    const toNotify = candidates.filter(c => now - (lastNotified.get(c.id) ?? 0) >= NEARBY_PUSH_COOLDOWN_MS);
+    if (toNotify.length === 0) return;
+
+    // 5) Record cooldown first (merge-duplicates upsert), then send.
+    const cooldownRows = toNotify.map(c => ({ mover_id: moverId, recipient_id: c.id, notified_at: now }));
+    const upsertResp = await fetch(
+      `${getSupabaseRestUrl("nearby_ping_cooldown")}?on_conflict=mover_id,recipient_id`,
+      {
+        method: "POST",
+        headers: { ...getSupabaseHeaders(), Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(cooldownRows),
+      },
+    );
+    if (!upsertResp.ok) {
+      console.log("[NEARBY_PUSH] cooldown upsert failed, skipping send to avoid spam");
+      return;
+    }
+
+    console.log("[NEARBY_PUSH]", moverName, "nearby ->", toNotify.length, "follower(s)");
+    await Promise.all(
+      toNotify.map(c =>
+        sendNearbyPush(
+          c.push_token,
+          "Friend nearby",
+          `${moverName} is driving nearby (${Math.round(c.distanceKm)} km away)`,
+          { type: "friend_nearby", fromUserId: moverId },
+        ),
+      ),
+    );
+  } catch (e) {
+    console.error("[NEARBY_PUSH] notifyNearbyFriends error:", e);
+  }
+}
+
 function hashPassword(password: string): string {
   let hash = 0;
   const salt = 'redline_salt_2024';
@@ -1103,6 +1219,11 @@ export const userRouter = createTRPCRouter({
         longitude: input.longitude,
         locationUpdatedAt: Date.now(),
       });
+      // Fire-and-forget: notify followers who now have this driver nearby
+      // (only if the location actually persisted).
+      if (updated) {
+        void notifyNearbyFriends(input.userId, input.latitude, input.longitude);
+      }
       return { success: updated };
     }),
 
