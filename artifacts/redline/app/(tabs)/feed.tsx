@@ -525,20 +525,27 @@ export default function FeedScreen() {
 
         <View style={styles.feedStatsRow}>
           <View style={styles.feedStatItem}>
-            <Zap size={14} color={colors.warning} />
-            <Text style={styles.feedStatValue}>{Math.round(convertSpeed(item.topSpeed))}</Text>
-            <Text style={styles.feedStatUnit}>{getSpeedLabel()}</Text>
+            <Zap size={15} color={colors.warning} />
+            <Text style={styles.feedStatValueAccent}>
+              {Math.round(convertSpeed(item.topSpeed))}
+              <Text style={styles.feedStatUnit}> {getSpeedLabel()}</Text>
+            </Text>
+            <Text style={styles.feedStatLabel}>TOP SPEED</Text>
           </View>
           <View style={styles.feedStatDivider} />
           <View style={styles.feedStatItem}>
-            <Navigation size={14} color={colors.accent} />
-            <Text style={styles.feedStatValue}>{convertDistance(item.distance).toFixed(1)}</Text>
-            <Text style={styles.feedStatUnit}>{getDistanceLabel()}</Text>
+            <Navigation size={15} color={colors.accent} />
+            <Text style={styles.feedStatValue}>
+              {convertDistance(item.distance).toFixed(1)}
+              <Text style={styles.feedStatUnit}> {getDistanceLabel()}</Text>
+            </Text>
+            <Text style={styles.feedStatLabel}>DISTANCE</Text>
           </View>
           <View style={styles.feedStatDivider} />
           <View style={styles.feedStatItem}>
-            <Clock size={14} color={colors.primary} />
+            <Clock size={15} color={colors.primary} />
             <Text style={styles.feedStatValue}>{formatDuration(item.duration)}</Text>
+            <Text style={styles.feedStatLabel}>DURATION</Text>
           </View>
         </View>
 
@@ -1203,34 +1210,39 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   feedCard: {
     backgroundColor: colors.cardLight,
-    borderRadius: 16,
-    marginBottom: 12,
+    borderRadius: 18,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 5,
   },
   feedCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     paddingBottom: 10,
-    gap: 10,
+    gap: 11,
   },
   feedAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.accent + '15',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.accent + '40',
+    borderWidth: 2,
+    borderColor: colors.accent + '55',
     overflow: 'hidden',
   },
   feedAvatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   },
   feedAvatarText: {
     fontSize: 15,
@@ -1271,10 +1283,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingBottom: 10,
   },
   feedActivityText: {
-    fontSize: 13,
-    fontFamily: 'Orbitron_500Medium',
-    color: colors.text,
-    marginBottom: 4,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    fontFamily: 'Orbitron_600SemiBold',
+    color: colors.accent,
+    marginBottom: 5,
   },
   feedLocationRow: {
     flexDirection: 'row',
@@ -1282,36 +1296,53 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 4,
   },
   feedLocationText: {
-    fontSize: 11,
-    fontFamily: 'Orbitron_400Regular',
-    color: colors.textLight,
+    fontSize: 13,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.text,
   },
   feedStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     backgroundColor: colors.background,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
   },
   feedStatItem: {
-    flexDirection: 'row',
+    flex: 1,
+    flexDirection: 'column',
     alignItems: 'center',
     gap: 5,
   },
   feedStatValue: {
-    fontSize: 13,
-    fontFamily: 'Orbitron_600SemiBold',
+    fontSize: 17,
+    fontFamily: 'Orbitron_700Bold',
     color: colors.text,
+  },
+  feedStatValueAccent: {
+    fontSize: 17,
+    fontFamily: 'Orbitron_700Bold',
+    color: colors.accent,
   },
   feedStatUnit: {
     fontSize: 9,
     fontFamily: 'Orbitron_400Regular',
     color: colors.textLight,
   },
+  feedStatLabel: {
+    fontSize: 8,
+    letterSpacing: 1.2,
+    fontFamily: 'Orbitron_500Medium',
+    color: colors.textLight,
+  },
   feedStatDivider: {
     width: 1,
-    height: 18,
+    height: 34,
     backgroundColor: colors.border,
   },
   postTextContainer: {
