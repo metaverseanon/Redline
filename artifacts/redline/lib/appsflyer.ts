@@ -31,6 +31,37 @@ let initSettled = false;
 let initSucceeded = false;
 let initPromise: Promise<void> | null = null;
 let pendingCustomerUserId: string | null = null;
+// Guards syncAppsFlyerIdToRevenueCat() so the AppsFlyer UID is pushed to
+// RevenueCat only once per launch (the value is stable for the install).
+let appsFlyerIdSyncedToRevenueCat = false;
+
+// Trigger the iOS App Tracking Transparency prompt so AppsFlyer's
+// timeToWaitForATTUserAuthorization window resolves with a real IDFA decision
+// instead of silently timing out. This uses the SAME shared
+// expo-tracking-transparency prompt that lib/tiktok.ts and lib/meta.ts use —
+// iOS only ever shows one dialog even when several SDKs request concurrently,
+// and the `undetermined` guard avoids redundant requests. Firing it here makes
+// AppsFlyer self-sufficient: it no longer relies on TikTok/Meta being enabled
+// for the prompt to appear. Non-blocking — AppsFlyer's init wait handles timing.
+function requestAttPermission(): void {
+  if (Platform.OS !== 'ios') return;
+  try {
+    const TT = require('expo-tracking-transparency');
+    void TT.getTrackingPermissionsAsync().then((current: { status: string }) => {
+      if (current.status === 'undetermined') {
+        return TT.requestTrackingPermissionsAsync().then((requested: { status: string }) => {
+          console.log('[APPSFLYER] ATT permission:', requested.status);
+        });
+      }
+      console.log('[APPSFLYER] ATT permission already:', current.status);
+      return undefined;
+    }).catch((e: unknown) => {
+      console.warn('[APPSFLYER] ATT request failed:', e);
+    });
+  } catch (e) {
+    console.warn('[APPSFLYER] expo-tracking-transparency unavailable:', e);
+  }
+}
 
 // Initialize the AppsFlyer SDK once. Resolves when init settles (success,
 // error, or a safety timeout) so event calls never hang forever. The success
@@ -69,6 +100,9 @@ export function initializeAppsFlyer(): Promise<void> {
           console.warn('[APPSFLYER] setCustomerUserId (pre-init) failed:', err);
         }
       }
+      // Raise the ATT prompt so the SDK's ATT wait resolves with a real IDFA
+      // decision. Non-blocking: initSdk starts the wait, ATT resolves into it.
+      requestAttPermission();
       appsFlyer.initSdk(
         {
           devKey: AF_DEV_KEY,
@@ -97,7 +131,73 @@ export function initializeAppsFlyer(): Promise<void> {
     }
   });
 
+  // Once init settles (success or timeout), the AppsFlyer UID is available.
+  // Push it into RevenueCat so the RevenueCat → AppsFlyer server-to-server
+  // integration can attribute the subscription lifecycle events the client
+  // never sees — renewals, trial conversions, and refunds. Fire-and-forget so
+  // it never delays init resolution; safe no-op on web / Expo Go.
+  void initPromise.then(() => syncAppsFlyerIdToRevenueCat());
+
   return initPromise;
+}
+
+// Read the AppsFlyer UID (the per-install device id AppsFlyer assigns). This is
+// the join key RevenueCat needs for server-to-server attribution. Resolves null
+// on web / Expo Go, before the SDK has started, or if the lookup fails.
+export function getAppsFlyerId(): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (Platform.OS === 'web' || !appsFlyer || typeof appsFlyer.getAppsFlyerUID !== 'function') {
+      resolve(null);
+      return;
+    }
+    try {
+      appsFlyer.getAppsFlyerUID((error: unknown, uid: string) => {
+        if (error || !uid) {
+          console.warn('[APPSFLYER] getAppsFlyerUID failed:', error);
+          resolve(null);
+          return;
+        }
+        resolve(uid);
+      });
+    } catch (err) {
+      console.warn('[APPSFLYER] getAppsFlyerUID threw:', err);
+      resolve(null);
+    }
+  });
+}
+
+// Link this install's AppsFlyer UID to the RevenueCat subscriber via
+// Purchases.setAppsflyerID(). RevenueCat carries this attribute through logIn
+// (attributes transfer to the identified user), so a single set at init is
+// enough — renewals/refunds forwarded by RevenueCat's AppsFlyer integration
+// then attribute to the correct install. RevenueCat is lazily required, matching
+// the native-module pattern above, so web / Expo Go cleanly no-op.
+export async function syncAppsFlyerIdToRevenueCat(): Promise<void> {
+  if (Platform.OS === 'web' || !appsFlyer) return;
+  if (appsFlyerIdSyncedToRevenueCat) return;
+
+  let Purchases: any = null;
+  try {
+    Purchases = require('react-native-purchases').default;
+  } catch (err) {
+    console.warn('[APPSFLYER] react-native-purchases unavailable; skipping RevenueCat ID sync:', err);
+    return;
+  }
+  if (!Purchases || typeof Purchases.setAppsflyerID !== 'function') return;
+
+  const uid = await getAppsFlyerId();
+  if (!uid) {
+    console.warn('[APPSFLYER] No AppsFlyer UID yet; RevenueCat S2S attribution not linked');
+    return;
+  }
+
+  try {
+    await Purchases.setAppsflyerID(uid);
+    appsFlyerIdSyncedToRevenueCat = true;
+    console.log('[APPSFLYER] Linked AppsFlyer UID to RevenueCat for S2S attribution:', uid);
+  } catch (err) {
+    console.warn('[APPSFLYER] setAppsflyerID on RevenueCat failed:', err);
+  }
 }
 
 async function ensureReady(): Promise<boolean> {
