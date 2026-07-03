@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
 import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
-import { appsflyerTrackSubscribe, appsflyerTrackPurchase } from "@/lib/appsflyer";
 import { posthogCapture } from "@/lib/posthog";
 import { trpc } from "@/lib/trpc";
 import * as sw from "@/lib/superwall";
@@ -159,8 +158,10 @@ export function recordSuccessfulPurchase(opts: {
     void tiktokTrackPurchase({ value: safeValue, currency, productId, orderId });
     void metaTrackSubscribe({ value: safeValue, currency, productId, productName, orderId });
     void metaTrackPurchase({ value: safeValue, currency, productId, orderId });
-    void appsflyerTrackSubscribe({ value: safeValue, currency, productId, productName, quantity: 1, orderId });
-    void appsflyerTrackPurchase({ value: safeValue, currency, productId, orderId });
+    // AppsFlyer purchase/subscribe events are delivered via the RevenueCat →
+    // AppsFlyer server-to-server integration (the AppsFlyer UID is linked in
+    // lib/appsflyer.ts), so they are intentionally NOT fired client-side here —
+    // doing both would double-count revenue in AppsFlyer.
     logPaywallEvent("paywall_purchase_succeeded", { productId, value, currency });
     const planId = String(opts.planType ?? "unknown");
     logPaywallEvent("subscribe", {

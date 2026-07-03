@@ -1,13 +1,13 @@
 import { Platform } from 'react-native';
 
-// AppsFlyer event wrapper — the AppsFlyer equivalent of lib/tiktok.ts and
-// lib/meta.ts. The SDK is initialized once via initializeAppsFlyer() (called at
-// app boot in app/_layout.tsx). Every in-app event awaits ensureReady() FIRST,
-// exactly like lib/tiktok.ts, so events fired moments after launch (e.g. the
-// onboarding paywall, which presents ~1.5s in) are NOT dropped before the SDK
-// has started. AppsFlyer delays its start until ATT resolves
-// (timeToWaitForATTUserAuthorization), so without this gate early Subscribe /
-// Purchase events were logged before the SDK could forward them and were lost.
+// AppsFlyer integration — install attribution + ATT + identity only.
+// Purchase / subscription revenue events are NOT fired from the client: they are
+// delivered to AppsFlyer by the RevenueCat → AppsFlyer server-to-server
+// integration, so firing them here as well would double-count revenue. This
+// module therefore starts the SDK (initializeAppsFlyer, called at app boot in
+// app/_layout.tsx), raises the ATT prompt, ties the Customer User ID to the
+// RevenueCat user, and links the AppsFlyer UID onto the RevenueCat subscriber
+// (setAppsflyerID) so the S2S events attribute to the right install.
 // Native module is lazily required so web and Expo Go cleanly no-op.
 
 let appsFlyer: any = null;
@@ -23,12 +23,7 @@ if (Platform.OS !== 'web') {
 const AF_DEV_KEY = process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY ?? 'FPDaeC6wQQ2zNXbRLgberm';
 const AF_APP_ID = process.env.EXPO_PUBLIC_APPSFLYER_APP_ID ?? '6758342404';
 
-// AppsFlyer standard (recommended) in-app event names + parameter keys.
-const AF_EVENT_SUBSCRIBE = 'af_subscribe';
-const AF_EVENT_PURCHASE = 'af_purchase';
-
 let initSettled = false;
-let initSucceeded = false;
 let initPromise: Promise<void> | null = null;
 let pendingCustomerUserId: string | null = null;
 // Guards syncAppsFlyerIdToRevenueCat() so the AppsFlyer UID is pushed to
@@ -114,7 +109,6 @@ export function initializeAppsFlyer(): Promise<void> {
         },
         (result: Record<string, unknown>) => {
           console.log('[APPSFLYER] Init success:', result);
-          initSucceeded = true;
           clearTimeout(timeout);
           settle();
         },
@@ -200,56 +194,6 @@ export async function syncAppsFlyerIdToRevenueCat(): Promise<void> {
   }
 }
 
-async function ensureReady(): Promise<boolean> {
-  if (Platform.OS === 'web' || !appsFlyer) return false;
-  if (initSettled) return true;
-  if (initPromise) {
-    await initPromise;
-    return !!appsFlyer;
-  }
-  await initializeAppsFlyer();
-  return !!appsFlyer;
-}
-
-function logEvent(eventName: string, values: Record<string, unknown>): Promise<void> {
-  return new Promise((resolve) => {
-    if (Platform.OS === 'web' || !appsFlyer) {
-      resolve();
-      return;
-    }
-    // Wait for the SDK to finish starting before logging, so events fired right
-    // after launch (onboarding paywall) are not dropped before the SDK is ready.
-    void ensureReady().then((ready) => {
-      if (!ready || typeof appsFlyer.logEvent !== 'function') {
-        resolve();
-        return;
-      }
-      // Surface init state so a true forwarding failure can be told apart from
-      // an init failure when reading TestFlight/device logs.
-      if (!initSucceeded) {
-        console.warn(`[APPSFLYER] logging ${eventName} but SDK init did not confirm success (initSettled=${initSettled}); event may be dropped`);
-      }
-      try {
-        appsFlyer.logEvent(
-          eventName,
-          values,
-          () => {
-            console.log(`[APPSFLYER] tracked ${eventName} (initSucceeded=${initSucceeded})`, values);
-            resolve();
-          },
-          (err: unknown) => {
-            console.warn(`[APPSFLYER] ${eventName} failed (initSucceeded=${initSucceeded}):`, err);
-            resolve();
-          },
-        );
-      } catch (err) {
-        console.warn(`[APPSFLYER] ${eventName} threw:`, err);
-        resolve();
-      }
-    });
-  });
-}
-
 // Tie AppsFlyer's Customer User ID to the backend/RevenueCat user id so events
 // and revenue attribute to the same person across reinstalls. Stored as the
 // pending id too so a pre-init call is applied when the SDK initializes.
@@ -264,38 +208,4 @@ export function appsflyerSetCustomerUserId(userId: string): void {
   } catch (err) {
     console.warn('[APPSFLYER] setCustomerUserId failed:', err);
   }
-}
-
-export async function appsflyerTrackSubscribe(opts: {
-  value: number;
-  currency: string;
-  productId: string;
-  productName?: string;
-  quantity?: number;
-  orderId?: string;
-}): Promise<void> {
-  await logEvent(AF_EVENT_SUBSCRIBE, {
-    af_revenue: opts.value,
-    af_currency: opts.currency,
-    af_content_id: opts.productId,
-    af_description: opts.productName ?? opts.productId,
-    af_quantity: opts.quantity ?? 1,
-    ...(opts.orderId ? { af_order_id: opts.orderId } : {}),
-  });
-}
-
-export async function appsflyerTrackPurchase(opts: {
-  value: number;
-  currency: string;
-  productId: string;
-  orderId?: string;
-}): Promise<void> {
-  await logEvent(AF_EVENT_PURCHASE, {
-    af_revenue: opts.value,
-    af_currency: opts.currency,
-    af_content_id: opts.productId,
-    af_content_type: 'product',
-    af_quantity: 1,
-    ...(opts.orderId ? { af_order_id: opts.orderId } : {}),
-  });
 }
