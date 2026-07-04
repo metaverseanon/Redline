@@ -5,14 +5,20 @@ description: How RedLine fires Subscribe/Purchase to ad SDKs and where the wirin
 
 # Ad SDK conversion events
 
-RedLine reports conversions to ad networks **client-side, directly from the app**,
-NOT via RevenueCat's dashboard server-to-server integrations.
+RedLine reports conversions to **TikTok and Meta client-side, directly from the app**.
+**AppsFlyer is the exception: as of the AppsFlyer↔RevenueCat rewrite, AppsFlyer
+purchase/subscribe events are delivered by RevenueCat's AppsFlyer server-to-server
+integration, NOT fired client-side.**
 
-**Rule:** Every ad SDK that needs Subscribe/Purchase must be fired in the RevenueCat
-`purchaseMutation` post-purchase block in `lib/revenuecat.tsx`, and identified in the
-identify `useEffect` in `app/_layout.tsx`. Each SDK has its own `lib/<sdk>.ts` wrapper
-(tiktok.ts, meta.ts, appsflyer.ts) that lazily requires the native module and no-ops on
-web / Expo Go.
+**Rule:** TikTok + Meta Subscribe/Purchase must be fired in the RevenueCat
+`purchaseMutation` post-purchase block (`recordSuccessfulPurchase`) in `lib/revenuecat.tsx`.
+**Do NOT fire AppsFlyer purchase/subscribe there** — that would double-count against the
+S2S path. Instead `lib/appsflyer.ts` does install attribution + ATT + identity only, and
+links the AppsFlyer UID onto the RevenueCat subscriber via `Purchases.setAppsflyerID(uid)`
+(`syncAppsFlyerIdToRevenueCat`, once per launch) so the S2S events attribute to the right
+install. Each SDK still has its own `lib/<sdk>.ts` wrapper (tiktok.ts, meta.ts,
+appsflyer.ts) that lazily requires the native module and no-ops on web / Expo Go. All SDKs
+are identified in the identify `useEffect` in `app/_layout.tsx`.
 
 **Why:** AppsFlyer was silently missing the Subscribe event — it was `initSdk`-ed at boot
 but no event was ever logged to it (TikTok + Meta were wired, AppsFlyer was not, and there
@@ -23,9 +29,10 @@ event; in this codebase RC does NOT forward — events are logged directly by th
 (1) a `lib/<sdk>.ts` wrapper exists, (2) it's called in `purchaseMutation`, and (3) the
 user id is set in `_layout.tsx` identify. Adding a new SDK = new wrapper + add both calls.
 
-**Caveat (double-count):** Do NOT also enable that SDK's RevenueCat dashboard S2S
-integration while firing client-side — it double-counts conversions. Pick one path; this
-app uses client-side for all SDKs.
+**Caveat (double-count):** Never run both paths for the same SDK — client-side firing AND
+that SDK's RevenueCat S2S integration double-counts conversions. Pick one path per SDK:
+TikTok + Meta = client-side; AppsFlyer = RevenueCat S2S (do not re-add client-side
+AppsFlyer purchase/subscribe calls).
 
 **Readiness gate (mandatory for every ad SDK):** an ad-SDK event must never be logged
 before that SDK's init has completed — every `lib/<sdk>.ts` wrapper must own init and gate
