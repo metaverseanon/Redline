@@ -17,7 +17,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Flag, Trophy, ChevronRight, Sparkles, X, Crown, Users, Gauge } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
-import { useSubscription } from '@/lib/revenuecat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
@@ -87,12 +86,6 @@ export default function WhatsNewScreen() {
   const TOTAL_PAGES = features.length + 1;
   const PAYWALL_INDEX = features.length;
 
-  const { presentPaywall } = useSubscription();
-  const rcPaywallTriedRef = useRef(false);
-  // dismiss is declared below and isn't memoized; keep the latest version in a
-  // ref so the paywall effect never captures a stale closure.
-  const dismissRef = useRef<() => Promise<void>>(async () => {});
-
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
@@ -145,7 +138,6 @@ export default function WhatsNewScreen() {
       router.replace('/(tabs)/track' as any);
     });
   };
-  dismissRef.current = dismiss;
 
   const skipTop = async () => {
     if (Platform.OS !== 'web') {
@@ -187,31 +179,6 @@ export default function WhatsNewScreen() {
 
   const isPaywallPage = currentPage === PAYWALL_INDEX;
   const isLastFeaturePage = currentPage === features.length - 1;
-
-  // When the user reaches the final "Pro" page, present the RevenueCat
-  // DASHBOARD paywall (the same remotely-designed paywall used everywhere
-  // else). presentPaywall internally falls back to the CustomPaywallModal;
-  // only when nothing could present (web / unconfigured SDK) does the inline
-  // OnboardPaywallPage below remain as the visible fallback.
-  useEffect(() => {
-    if (!isPaywallPage) return;
-    if (rcPaywallTriedRef.current) return;
-    rcPaywallTriedRef.current = true;
-    void (async () => {
-      try {
-        const result = await presentPaywall('whats_new');
-        if (result === 'not_presented' || result === 'error') {
-          // Keep the inline paywall page visible as the fallback.
-          return;
-        }
-        // purchased / restored / cancelled — the paywall was genuinely shown
-        // and closed; leave the announcement flow either way.
-        void dismissRef.current();
-      } catch (e) {
-        console.warn('[WHATS_NEW] paywall presentation failed:', e);
-      }
-    })();
-  }, [isPaywallPage, presentPaywall]);
 
   const iconSpin = iconRotate.interpolate({
     inputRange: [0, 1],

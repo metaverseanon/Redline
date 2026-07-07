@@ -1,35 +1,29 @@
 ---
-name: RevenueCat dashboard paywall presentation
-description: How RedLine shows RC dashboard-designed paywalls and why the custom modal alone never shows them
+name: RevenueCat dashboard paywall — intentionally disabled
+description: Why RedLine uses its hand-coded paywalls and keeps the RCUI dashboard paywall path disabled
 ---
 
-Paywalls designed in the RevenueCat dashboard (Paywalls editor) only appear if the app calls
-`react-native-purchases-ui` `presentPaywall()`. A hand-coded modal that uses
-`react-native-purchases` for purchases will NEVER pick up dashboard paywall designs.
+**Current decision (user, Jul 2026): the app's hand-coded paywalls are authoritative.**
+The RCUI dashboard-paywall code path in `presentPaywall` exists but is gated OFF by
+`USE_RC_DASHBOARD_PAYWALL = false` in `lib/revenuecat.tsx`. Onboarding and whats-new
+render the inline `OnboardPaywallPage` directly; everywhere else shows `CustomPaywallModal`.
 
-**Why:** user published a dashboard paywall and it didn't show — the app was rendering its
-own `CustomPaywallModal`. Paywall order is now: Superwall (if configured) → RC dashboard
-paywall (RCUI `presentPaywall`) → CustomPaywallModal fallback (Expo Go / web / no published
-paywall / native error).
+**Why:** the dashboard paywall ("Podium Pass") was tried and rejected. The dealbreaker:
+when NO active paywall is attached to the current offering, RCUI `presentPaywall` does
+NOT return NOT_PRESENTED — it presents its own bare-bones default template (app icon +
+product list). So there is no clean remote/dashboard way to fall back to the custom
+design; deactivating the dashboard paywall just swaps in the ugly default.
 
 **How to apply:**
-- Dashboard design changes ship remotely (no app update); but ADDING the RCUI call itself is
-  a native-client change → needs a new EAS build.
-- Purchases inside the RCUI paywall bypass the app's `purchaseMutation` — analytics
-  (TikTok/Meta + PostHog subscribe/subscription_started) must be replayed after a PURCHASED
-  result via the extracted `recordSubscribeTapped`/`recordSuccessfulPurchase` helpers,
-  matching the entitlement's `productIdentifier` against the current offering's packages
-  (exact match first). AppsFlyer stays S2S — never re-add client-side.
-- RCUI `presentPaywall` resolves at close with PAYWALL_RESULT strings
-  (PURCHASED/RESTORED/CANCELLED/NOT_PRESENTED/ERROR); log presented/viewed only for real
-  presentations so NOT_PRESENTED/ERROR don't inflate view counts.
-- **The app has TWO hard-coded paywall surfaces, not one:** besides `CustomPaywallModal`
-  (the `presentPaywall` fallback), there is `OnboardPaywallPage`, an inline PAGE rendered
-  directly by the onboarding final step and the whats-new screen — it bypasses
-  `presentPaywall` entirely. The user tested the dashboard paywall by creating a NEW account
-  (→ onboarding) and concluded the feature was broken. Both surfaces now route through
-  `presentPaywall` first (source `onboarding` / `whats_new`), keeping the inline page only as
-  the not_presented/error fallback. When "the paywall didn't change", first ask WHICH
-  surface was on screen ("START YEARLY" = onboarding page; "START YEARLY PLAN" = modal).
-- Diagnostic tell: the onboarding page logs ZERO `paywall_*` analytics events — a session
-  showing a paywall but no paywall events means the inline page, not the paywall system.
+- If the user ever wants dashboard paywalls again: flip `USE_RC_DASHBOARD_PAYWALL` to
+  true (native rebuild required) AND make sure an active paywall stays attached to the
+  current offering forever after — turning it off shows RC's default template, not the
+  custom modal.
+- The RCUI block already replays purchase analytics (TikTok/Meta + PostHog via
+  `recordSubscribeTapped`/`recordSuccessfulPurchase`) on PURCHASED — keep that if
+  re-enabled; RCUI purchases bypass `purchaseMutation`. AppsFlyer stays S2S.
+- The app has TWO hand-coded paywall surfaces: `OnboardPaywallPage` (inline page in
+  onboarding final step + whats-new; "START YEARLY") and `CustomPaywallModal`
+  (presentPaywall fallback; "START YEARLY PLAN"). When debugging "which paywall showed",
+  the button label + presence/absence of `paywall_*` analytics events tells you which
+  surface it was (the inline page logs no paywall events).

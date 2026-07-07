@@ -63,7 +63,6 @@ import {
   Lock,
 } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
-import { useSubscription } from '@/lib/revenuecat';
 import { useUser } from '@/providers/UserProvider';
 import { trpcClient } from '@/lib/trpc';
 import { posthogCapture } from '@/lib/posthog';
@@ -495,9 +494,6 @@ export default function OnboardingScreen() {
   const [checkingName, setCheckingName] = useState(false);
   const [nameError, setNameError] = useState('');
   const ratingRequestedRef = useRef(false);
-  const { presentPaywall } = useSubscription();
-  const rcPaywallTriedRef = useRef(false);
-  const [paywallFallback, setPaywallFallback] = useState(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [ackSafety, setAckSafety] = useState(false);
   const [ackTerms, setAckTerms] = useState(false);
@@ -901,33 +897,6 @@ export default function OnboardingScreen() {
     }
     router.replace('/(tabs)/track' as any);
   }, [user, syncImagesToBackend, router]);
-
-  // Final onboarding step: present the RevenueCat DASHBOARD paywall (remotely
-  // designed, same one shown everywhere else in the app). presentPaywall
-  // internally falls back to the CustomPaywallModal when the dashboard paywall
-  // can't present; only when NOTHING could present (web / SDK unconfigured /
-  // no offering) do we fall back to the built-in OnboardPaywallPage so the
-  // user is never stuck on a blank final step.
-  useEffect(() => {
-    if (step !== 'paywall') return;
-    if (rcPaywallTriedRef.current) return;
-    rcPaywallTriedRef.current = true;
-    void (async () => {
-      try {
-        const result = await presentPaywall('onboarding');
-        if (result === 'not_presented' || result === 'error') {
-          setPaywallFallback(true);
-          return;
-        }
-        // purchased / restored / cancelled — the paywall was genuinely shown
-        // and closed; finish onboarding either way (cancel == "Maybe later").
-        void completeOnboarding();
-      } catch (e) {
-        console.warn('[ONBOARDING] paywall presentation failed:', e);
-        setPaywallFallback(true);
-      }
-    })();
-  }, [step, presentPaywall, completeOnboarding]);
 
   // Onboarding funnel: fire a completion event for each step the user advances
   // past (forward transitions only — backward navigation is ignored). The final
@@ -1494,25 +1463,16 @@ export default function OnboardingScreen() {
   };
 
   if (step === 'paywall') {
-    if (paywallFallback) {
-      return (
-        <View style={styles.container}>
-          <OnboardPaywallPage
-            width={SCREEN_WIDTH}
-            topInset={insets.top}
-            bottomInset={insets.bottom}
-            onContinue={() => void completeOnboarding()}
-            ctaLabel={undefined}
-            skipLabel="Maybe later"
-          />
-        </View>
-      );
-    }
-    // The RevenueCat dashboard paywall presents natively over this screen —
-    // keep a minimal branded backdrop while it loads.
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#CC0000" />
+      <View style={styles.container}>
+        <OnboardPaywallPage
+          width={SCREEN_WIDTH}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          onContinue={() => void completeOnboarding()}
+          ctaLabel={undefined}
+          skipLabel="Maybe later"
+        />
       </View>
     );
   }

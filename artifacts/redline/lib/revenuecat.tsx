@@ -334,6 +334,11 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
 
   const lastPaywallSourceRef = useRef<string | null>(null);
 
+  // Set to true to prefer the RevenueCat dashboard-designed paywall (RCUI)
+  // over the app's CustomPaywallModal. See the comment at the call site for
+  // why this is currently disabled.
+  const USE_RC_DASHBOARD_PAYWALL = false;
+
   const presentPaywall = useCallback(
     async (source: string = "unknown"): Promise<PaywallResult> => {
       lastPaywallErrorRef.current = null;
@@ -387,13 +392,15 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         return "error";
       }
 
-      // Prefer the RevenueCat DASHBOARD paywall (designed in the RC Paywalls
-      // editor, delivered remotely — no app update needed for design changes).
-      // The CustomPaywallModal below stays as the automatic fallback whenever
-      // the dashboard paywall can't present (Expo Go / no published paywall on
-      // the current offering / native error), so users are never left without
-      // a paywall.
-      if (PurchasesUIModule?.presentPaywall) {
+      // RevenueCat DASHBOARD paywall (designed in the RC Paywalls editor,
+      // delivered remotely). DISABLED by user decision (Jul 2026): when no
+      // dashboard paywall is active on the offering, RCUI shows its own
+      // bare-bones default template instead of returning NOT_PRESENTED, so
+      // there is no clean remote way to fall back to the CustomPaywallModal.
+      // The app's own CustomPaywallModal (below) is the paywall everywhere.
+      // Flip USE_RC_DASHBOARD_PAYWALL to true to prefer the dashboard paywall
+      // again (requires a new build either way).
+      if (USE_RC_DASHBOARD_PAYWALL && PurchasesUIModule?.presentPaywall) {
         try {
           const rcRaw = await PurchasesUIModule.presentPaywall({ displayCloseButton: true });
           const rcResult = String(rcRaw).toUpperCase();
