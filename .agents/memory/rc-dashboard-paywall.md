@@ -23,3 +23,13 @@ paywall / native error).
 - RCUI `presentPaywall` resolves at close with PAYWALL_RESULT strings
   (PURCHASED/RESTORED/CANCELLED/NOT_PRESENTED/ERROR); log presented/viewed only for real
   presentations so NOT_PRESENTED/ERROR don't inflate view counts.
+- **The app has TWO hard-coded paywall surfaces, not one:** besides `CustomPaywallModal`
+  (the `presentPaywall` fallback), there is `OnboardPaywallPage`, an inline PAGE rendered
+  directly by the onboarding final step and the whats-new screen — it bypasses
+  `presentPaywall` entirely. The user tested the dashboard paywall by creating a NEW account
+  (→ onboarding) and concluded the feature was broken. Both surfaces now route through
+  `presentPaywall` first (source `onboarding` / `whats_new`), keeping the inline page only as
+  the not_presented/error fallback. When "the paywall didn't change", first ask WHICH
+  surface was on screen ("START YEARLY" = onboarding page; "START YEARLY PLAN" = modal).
+- Diagnostic tell: the onboarding page logs ZERO `paywall_*` analytics events — a session
+  showing a paywall but no paywall events means the inline page, not the paywall system.
