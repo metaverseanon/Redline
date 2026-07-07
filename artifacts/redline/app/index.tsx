@@ -3,10 +3,8 @@ import { StyleSheet, Animated, Image, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { CURRENT_APP_VERSION } from './whats-new';
 
 const ONBOARDING_KEY = 'onboarding_completed';
-const WHATS_NEW_VERSION_KEY = 'whats_new_seen_version';
 const _BUILD_TIMESTAMP = '20260509';
 
 export default function WelcomeScreen() {
@@ -17,14 +15,11 @@ export default function WelcomeScreen() {
     const checkOnboarding = async () => {
       try {
         const completed = await AsyncStorage.getItem(ONBOARDING_KEY);
-        const seenVersion = await AsyncStorage.getItem(WHATS_NEW_VERSION_KEY);
 
         let destination: string;
         let destinationParams: Record<string, string> | undefined;
         if (completed !== 'true') {
           destination = '/onboarding';
-        } else if (seenVersion !== CURRENT_APP_VERSION) {
-          destination = '/whats-new';
         } else {
           destination = '/(tabs)/track';
         }
@@ -56,7 +51,7 @@ export default function WelcomeScreen() {
           }
         }
 
-        console.log('[WELCOME] Routing to:', destination, '| onboarding:', completed, '| seenVersion:', seenVersion);
+        console.log('[WELCOME] Routing to:', destination, '| onboarding:', completed);
 
         const delay = destination.startsWith('/user-profile') || destination.startsWith('/(tabs)/feed') || destination.startsWith('/(tabs)/leaderboard') ? 1200 : 4000;
 

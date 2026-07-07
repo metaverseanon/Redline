@@ -241,7 +241,6 @@ const SCREEN_NAMES: Record<string, string> = {
   '/my-posts': 'My Posts',
   '/notifications': 'Notifications',
   '/user-profile': 'User Profile',
-  '/whats-new': "What's New",
 };
 
 function humanizePath(path: string): string {
@@ -437,7 +436,6 @@ function RootLayoutNav() {
       <Stack.Screen name="notifications" options={{ presentation: "card" }} />
       <Stack.Screen name="my-posts" options={{ presentation: "card" }} />
       <Stack.Screen name="nearby-friends" options={{ presentation: "card" }} />
-      <Stack.Screen name="whats-new" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="challenge-complete" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="challenges" options={{ presentation: "card", headerShown: false }} />
     </Stack>
