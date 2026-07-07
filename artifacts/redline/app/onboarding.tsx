@@ -63,6 +63,9 @@ import {
   Lock,
 } from 'lucide-react-native';
 import OnboardPaywallPage from '@/components/OnboardPaywallPage';
+import CarouselPaywall from '@/components/CarouselPaywall';
+import type { PaywallResult } from '@/components/CustomPaywallModal';
+import { useSubscription, USE_CAROUSEL_PAYWALL } from '@/lib/revenuecat';
 import { useUser } from '@/providers/UserProvider';
 import { trpcClient } from '@/lib/trpc';
 import { posthogCapture } from '@/lib/posthog';
@@ -465,6 +468,42 @@ function PickerModal({
 }
 
 /* ----------------------------- Main screen ----------------------------- */
+
+function OnboardCarouselPaywall({ onContinue }: { onContinue: () => void }) {
+  const { monthlyPackage, yearlyPackage, purchase, restore, refetchCustomerInfo } = useSubscription();
+  const doneRef = useRef(false);
+  const [visible, setVisible] = useState(true);
+
+  const handleClose = useCallback(
+    (_result: PaywallResult) => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setVisible(false);
+      onContinue();
+    },
+    [onContinue],
+  );
+
+  return (
+    <CarouselPaywall
+      visible={visible}
+      monthlyPackage={monthlyPackage}
+      yearlyPackage={yearlyPackage}
+      onClose={handleClose}
+      onPurchase={purchase}
+      onRestore={restore}
+      verifyEntitlement={async () => {
+        try {
+          const fresh: any = await refetchCustomerInfo?.();
+          const active = fresh?.data?.entitlements?.active;
+          return !!active && Object.keys(active).length > 0;
+        } catch {
+          return false;
+        }
+      }}
+    />
+  );
+}
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -1463,6 +1502,13 @@ export default function OnboardingScreen() {
   };
 
   if (step === 'paywall') {
+    if (USE_CAROUSEL_PAYWALL) {
+      return (
+        <View style={styles.container}>
+          <OnboardCarouselPaywall onContinue={() => void completeOnboarding()} />
+        </View>
+      );
+    }
     return (
       <View style={styles.container}>
         <OnboardPaywallPage

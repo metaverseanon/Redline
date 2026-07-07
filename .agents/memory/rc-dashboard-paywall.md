@@ -5,9 +5,11 @@ description: Why RedLine uses its hand-coded paywalls and keeps the RCUI dashboa
 
 **Current decision (user, Jul 2026): the app's hand-coded paywalls are authoritative.**
 The RCUI dashboard-paywall code path in `presentPaywall` exists but is gated OFF by a
-`USE_RC_DASHBOARD_PAYWALL = false` flag. Onboarding renders the inline
-`OnboardPaywallPage` directly; everywhere else shows `CustomPaywallModal`. (The
-whats-new announcement screen was removed entirely in the same release.)
+`USE_RC_DASHBOARD_PAYWALL = false` flag. Which hand-coded paywall UI shows (classic
+vs the Lovable carousel) is a separate exported flag `USE_CAROUSEL_PAYWALL` in
+`lib/revenuecat.tsx` that governs BOTH the app-wide modal host and onboarding —
+the user's standing deal is that the classic paywall files stay intact and the
+carousel is revertible by flipping that one flag.
 
 **Why:** the dashboard paywall ("Podium Pass") was tried and rejected. The dealbreaker:
 when NO active paywall is attached to the current offering, RCUI `presentPaywall` does
@@ -23,8 +25,9 @@ design; deactivating the dashboard paywall just swaps in the ugly default.
 - The RCUI block already replays purchase analytics (TikTok/Meta + PostHog via
   `recordSubscribeTapped`/`recordSuccessfulPurchase`) on PURCHASED — keep that if
   re-enabled; RCUI purchases bypass `purchaseMutation`. AppsFlyer stays S2S.
-- The app has TWO hand-coded paywall surfaces: `OnboardPaywallPage` (inline page in
-  onboarding final step; "START YEARLY") and `CustomPaywallModal`
-  (presentPaywall path; "START YEARLY PLAN"). When debugging "which paywall showed",
-  the button label + presence/absence of `paywall_*` analytics events tells you which
-  surface it was (the inline page logs no paywall events).
+- Hand-coded paywall surfaces: the presentPaywall modal host and the onboarding
+  final step. Both follow `USE_CAROUSEL_PAYWALL`; when it's off, onboarding shows
+  the inline `OnboardPaywallPage` ("START YEARLY") and everywhere else shows
+  `CustomPaywallModal` ("START YEARLY PLAN"). When debugging "which paywall
+  showed", the button label + presence/absence of `paywall_*` analytics events
+  tells you which surface it was (the inline page logs no paywall events).

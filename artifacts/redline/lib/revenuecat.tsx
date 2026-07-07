@@ -14,7 +14,7 @@ import * as sw from "@/lib/superwall";
 // Which paywall UI the app-wide presentPaywall modal host renders.
 // true  = the new Lovable-designed carousel paywall (CarouselPaywall)
 // false = the classic paywall (CustomPaywallModal) — flip this single line to revert.
-const USE_CAROUSEL_PAYWALL = true;
+export const USE_CAROUSEL_PAYWALL = true;
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;

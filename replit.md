@@ -117,9 +117,13 @@ Hosts the **RedLine** mobile app (Expo/React Native) and its companion **API ser
   7-slide auto-advancing carousel paywall translated from a user-provided
   Lovable design (dark #090909, red #E10600, Orbitron). Same props interface +
   purchase/restore flow as the classic `components/CustomPaywallModal.tsx`,
-  which is kept intact; `USE_CAROUSEL_PAYWALL` (top of `lib/revenuecat.tsx`) is
-  the single-line switch back to the classic paywall. Onboarding still renders
-  the inline `OnboardPaywallPage` (unchanged).
+  which is kept intact; `USE_CAROUSEL_PAYWALL` (exported from the top of
+  `lib/revenuecat.tsx`) is the single-line switch back to the classic paywalls.
+  The flag also governs onboarding: the paywall step renders an
+  `OnboardCarouselPaywall` wrapper (in `app/onboarding.tsx`) around
+  `CarouselPaywall` when on, and the original inline `OnboardPaywallPage`
+  (untouched) when off. Any close result completes onboarding, matching the
+  old "Maybe later" behavior.
 - **Paywall presentation (Superwall, layered over RevenueCat):** `expo-superwall`
   (auto-links, NO config plugin in `app.json`). **Option A** — when a Superwall
   public key is configured, Superwall takes over paywall presentation EVERYWHERE
