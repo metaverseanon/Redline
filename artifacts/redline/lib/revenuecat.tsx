@@ -387,6 +387,100 @@ function useSubscriptionContext(userId?: string | null, userEmail?: string | nul
         return "error";
       }
 
+      // Prefer the RevenueCat DASHBOARD paywall (designed in the RC Paywalls
+      // editor, delivered remotely — no app update needed for design changes).
+      // The CustomPaywallModal below stays as the automatic fallback whenever
+      // the dashboard paywall can't present (Expo Go / no published paywall on
+      // the current offering / native error), so users are never left without
+      // a paywall.
+      if (PurchasesUIModule?.presentPaywall) {
+        try {
+          const rcRaw = await PurchasesUIModule.presentPaywall({ displayCloseButton: true });
+          const rcResult = String(rcRaw).toUpperCase();
+          console.log("[RC] Dashboard paywall result:", rcResult);
+          // presentPaywall resolves at close, so presented/viewed are logged
+          // once we KNOW a real presentation happened (PURCHASED/RESTORED/
+          // CANCELLED) — NOT_PRESENTED/ERROR never inflate view counts.
+          if (rcResult === "PURCHASED" || rcResult === "RESTORED" || rcResult === "CANCELLED") {
+            logPaywallEvent("paywall_presented", { source, presenter: "revenuecat_ui" });
+            logPaywallEvent("paywall_viewed", { source, presenter: "revenuecat_ui" });
+          }
+          if (rcResult === "PURCHASED" || rcResult === "RESTORED") {
+            if (rcResult === "PURCHASED") {
+              // Purchases made inside the RC dashboard paywall bypass
+              // purchaseMutation, so replay the exact same analytics here
+              // (TikTok/Meta ad events + PostHog funnel + subscription_started).
+              // The imperative presentPaywall API has no pre-purchase callback,
+              // so subscribe_tapped is emitted alongside success — only
+              // successful purchases produce the tapped step on this path.
+              try {
+                const freshInfo = await PurchasesModule?.getCustomerInfo?.();
+                const activeEnt =
+                  freshInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+                const purchasedProductId: string | null = activeEnt?.productIdentifier ?? null;
+                const offerings: any = queryClient.getQueryData(["revenuecat", "offerings"]);
+                const pkgs: any[] = offerings?.current?.availablePackages ?? [];
+                // Exact product-id match first; prefix match only as a fallback
+                // (iOS entitlements sometimes report "productId:basePlanId"-style
+                // composite ids, so a documented prefix fallback stays useful).
+                const exact =
+                  purchasedProductId
+                    ? pkgs.find(
+                        (p: any) => String(p?.product?.identifier ?? "") === purchasedProductId
+                      )
+                    : null;
+                const matched =
+                  exact ??
+                  (purchasedProductId
+                    ? pkgs.find((p: any) => {
+                        const pid = String(p?.product?.identifier ?? "");
+                        return pid.length > 0 && purchasedProductId.startsWith(`${pid}:`);
+                      })
+                    : null) ??
+                  null;
+                const planType = String(matched?.packageType ?? matched?.identifier ?? "unknown");
+                recordSubscribeTapped({
+                  product: matched?.product,
+                  planType,
+                  productId: matched?.identifier ?? purchasedProductId,
+                });
+                recordSuccessfulPurchase({
+                  product: matched?.product,
+                  planType,
+                  productId: matched?.identifier ?? purchasedProductId,
+                  customerInfo: freshInfo,
+                });
+              } catch (err) {
+                console.warn("[RC] post-dashboard-paywall analytics failed:", err);
+              }
+            }
+            void queryClient.invalidateQueries({ queryKey: ["revenuecat", "customer-info"] });
+            const mapped: PaywallResult = rcResult === "PURCHASED" ? "purchased" : "restored";
+            logPaywallEvent("paywall_closed", {
+              source,
+              result: mapped,
+              presenter: "revenuecat_ui",
+            });
+            return mapped;
+          }
+          if (rcResult === "CANCELLED") {
+            logPaywallEvent("paywall_closed", {
+              source,
+              result: "cancelled",
+              presenter: "revenuecat_ui",
+            });
+            return "cancelled";
+          }
+          // NOT_PRESENTED / ERROR — no published paywall for the offering or a
+          // native failure. Fall through to the custom RC modal below.
+          console.warn("[RC] Dashboard paywall did not present:", rcResult);
+          logPaywallEvent("paywall_rcui_fallback", { source, reason: rcResult });
+        } catch (err) {
+          console.warn("[RC] Dashboard paywall threw; falling back to custom modal:", err);
+          logPaywallEvent("paywall_rcui_fallback", { source, reason: "exception" });
+        }
+      }
+
       logPaywallEvent("paywall_presented", { source });
       logPaywallEvent("paywall_viewed", { source });
       return new Promise<PaywallResult>((resolve) => {
