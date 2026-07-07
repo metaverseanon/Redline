@@ -4,11 +4,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CustomPaywallModal, { PaywallResult } from "@/components/CustomPaywallModal";
+import CarouselPaywall from "@/components/CarouselPaywall";
 import { tiktokTrackSubscribe, tiktokTrackPurchase } from "@/lib/tiktok";
 import { metaTrackSubscribe, metaTrackPurchase } from "@/lib/meta";
 import { posthogCapture } from "@/lib/posthog";
 import { trpc } from "@/lib/trpc";
 import * as sw from "@/lib/superwall";
+
+// Which paywall UI the app-wide presentPaywall modal host renders.
+// true  = the new Lovable-designed carousel paywall (CarouselPaywall)
+// false = the classic paywall (CustomPaywallModal) — flip this single line to revert.
+const USE_CAROUSEL_PAYWALL = true;
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -711,10 +717,12 @@ export function SubscriptionProvider({
     };
   }, [value.isAvailable, value.customerInfo, userId]);
 
+  const PaywallComponent = USE_CAROUSEL_PAYWALL ? CarouselPaywall : CustomPaywallModal;
+
   return (
     <Context.Provider value={value}>
       {children}
-      <CustomPaywallModal
+      <PaywallComponent
         visible={value.paywallVisible}
         monthlyPackage={value.monthlyPackage}
         yearlyPackage={value.yearlyPackage}
